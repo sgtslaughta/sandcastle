@@ -1,0 +1,9 @@
+{{define "request"}}{{template "head" .}}
+<h1>Request access</h1>
+<p>Workspace <strong>{{.WS.Name}}</strong> was denied <code>{{.Host}}:{{.Port}}</code>.</p>
+<form method="post" action="/requests">{{template "csrf" .User.CSRF}}
+<input type="hidden" name="ws" value="{{.WS.ID}}"><input type="hidden" name="host" value="{{.Host}}"><input type="hidden" name="port" value="{{.Port}}">
+<p><label for="j">Why does this workspace need it?</label><br>
+<textarea id="j" name="justification" rows="4" cols="60" required maxlength="2000"></textarea></p>
+<button>Submit request</button></form>
+{{template "foot"}}{{end}}
