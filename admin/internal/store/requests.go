@@ -85,15 +85,21 @@ func (s *Store) Decide(ctx context.Context, actor, id string, approve bool, ttl 
 
 // RecordDenial upserts a denial. Updates are throttled to once per second per
 // key and each workspace keeps its newest 200 rows, so a flooding agent
-// cannot grow the table or bury other workspaces' denials.
+// cannot grow the table or bury other workspaces' denials. The cap only
+// needs enforcing when a row was inserted.
 func (s *Store) RecordDenial(ctx context.Context, wsID, host string, port int) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `INSERT INTO denials (workspace_id, host, port) VALUES ($1, $2, $3)
+		var inserted bool
+		err := tx.QueryRow(ctx, `INSERT INTO denials (workspace_id, host, port) VALUES ($1, $2, $3)
 			ON CONFLICT (workspace_id, host, port) DO UPDATE SET count = denials.count + 1, last_seen = now()
-			WHERE denials.last_seen < now() - interval '1 second'`, wsID, host, port); err != nil {
+			WHERE denials.last_seen < now() - interval '1 second' RETURNING (xmax = 0)`, wsID, host, port).Scan(&inserted)
+		if err == pgx.ErrNoRows || (err == nil && !inserted) { // throttled, or a counter bump
+			return nil
+		}
+		if err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `DELETE FROM denials WHERE workspace_id = $1 AND (host, port) IN (
+		_, err = tx.Exec(ctx, `DELETE FROM denials WHERE workspace_id = $1 AND (host, port) IN (
 			SELECT host, port FROM denials WHERE workspace_id = $1 ORDER BY last_seen DESC, host OFFSET 200)`, wsID)
 		return err
 	})

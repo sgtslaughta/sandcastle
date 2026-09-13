@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -116,9 +117,10 @@ func serve(ctx context.Context) error {
 	}
 
 	xs := xds.NewServer()
+	th := &throttle{now: time.Now}
 	xs.OnDenial = func(d xds.Denial) {
 		ws, ok := pods.ByIP(d.SrcIP)
-		if !ok {
+		if !ok || !th.allow(fmt.Sprintf("%s|%s|%d", ws.ID, d.Host, d.Port)) {
 			return
 		}
 		if err := st.RecordDenial(ctx, ws.ID, d.Host, d.Port); err != nil {
@@ -195,6 +197,39 @@ func serve(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+// throttle skips repeat denials within a second before they reach Postgres,
+// so a retrying agent costs no DB writes. The store throttles again, in
+// case of restarts.
+type throttle struct {
+	mu   sync.Mutex
+	now  func() time.Time
+	last map[string]time.Time
+}
+
+func (t *throttle) allow(key string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := t.now()
+	if now.Sub(t.last[key]) < time.Second {
+		return false
+	}
+	if t.last == nil {
+		t.last = map[string]time.Time{}
+	}
+	t.last[key] = now
+	if len(t.last) > 10000 {
+		for k, at := range t.last {
+			if now.Sub(at) > time.Minute {
+				delete(t.last, k)
+			}
+		}
+		if len(t.last) > 10000 { // a flood of fresh keys: start over rather than scan every call
+			t.last = map[string]time.Time{key: now}
+		}
+	}
+	return true
 }
 
 // apply pushes Envoy first, then Cilium: a revocation must not wait on the
