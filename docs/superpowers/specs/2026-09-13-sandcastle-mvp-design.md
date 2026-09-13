@@ -38,7 +38,9 @@ Any packet from a workspace toward an enclave CIDR is a page, never a log line.
 
 Single KVM virtual machine on the developer's host, running k3s (flannel +
 kube-proxy disabled), Cilium CNI, kata-deploy with Cloud Hypervisor
-(`runtimeClassName: kata-clh`).
+(`runtimeClassName: kata-clh-runtime-rs`). That is Cloud Hypervisor on Kata's
+Rust runtime, the upstream default since 4.0; the Go runtime's `kata-clh` is
+deprecated and receives no new features.
 
 ### Lab host boundary — added 2026-09-13
 
@@ -115,7 +117,8 @@ Consequences for this design:
 
 - Templates: `base` (code-server) and `desktop` (linuxserver.io Webtop base,
   selkies **websocket-only** through the Coder tunnel, software rendering,
-  enlarged /dev/shm). Optional `gvisor` flag on either.
+  enlarged /dev/shm). Both run on `kata-clh-runtime-rs`; untrusted code
+  inside them runs under in-guest `runsc` (see Second isolation layer).
 - DinD sidecar inside the same Kata VM, Docker API on localhost TCP only —
   container dev DX contained by the VM boundary.
 - Honeytokens baked into every image: fake `~/.aws/credentials`, fake `.env`,

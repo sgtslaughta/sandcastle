@@ -43,7 +43,7 @@ make preflight   # check the host can run the VM
 make vm-host     # sudo, once — installs libvirt, then re-login
 make vm          # create and boot the VM
 make cluster     # k3s + cilium, inside the VM
-make kata        # kata-clh + gvisor runtime classes, inside the VM
+make kata        # kata-clh-runtime-rs + gvisor runtime classes, inside the VM
 make verify-substrate
 ```
 

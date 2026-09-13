@@ -35,7 +35,7 @@ fi
 $KUBECTL -n kube-system get ds kube-proxy >/dev/null 2>&1 && bad "kube-proxy still present — kubeProxyReplacement not in effect" || pass "no kube-proxy (replaced by cilium)"
 $KUBECTL get crd ciliumnetworkpolicies.cilium.io >/dev/null 2>&1 && pass "CiliumNetworkPolicy CRD present" || bad "CiliumNetworkPolicy CRD absent"
 
-for rc in kata-clh gvisor; do
+for rc in kata-clh-runtime-rs gvisor; do
   $KUBECTL get runtimeclass "$rc" >/dev/null 2>&1 && pass "RuntimeClass $rc" || bad "RuntimeClass $rc absent"
 done
 
@@ -49,7 +49,7 @@ boot_pod() { # name runtimeclass
   $KUBECTL -n "$NS" wait --for=condition=Ready "pod/$1" --timeout=180s >/dev/null 2>&1
 }
 
-if boot_pod kata-probe kata-clh; then
+if boot_pod kata-probe kata-clh-runtime-rs; then
   guest_kernel=$($KUBECTL -n "$NS" logs kata-probe 2>/dev/null | head -1)
   if [[ -n "$guest_kernel" && "$guest_kernel" != "$host_kernel" ]]; then
     pass "kata guest kernel $guest_kernel differs from host $host_kernel"
@@ -57,12 +57,12 @@ if boot_pod kata-probe kata-clh; then
     bad "kata pod reports kernel '$guest_kernel' — same as host, isolation is not real"
   fi
 else
-  bad "kata-clh pod did not become ready"
+  bad "kata-clh-runtime-rs pod did not become ready"
 fi
 
-# gVisor is the nested second boundary for untrusted work. Here we only prove the
-# shim is installed and sentry-backed; nesting inside Kata is exercised by the
-# template flag in a later phase.
+# gVisor is a sibling runtime class, not the workspace boundary. Here we only
+# prove the shim is installed and sentry-backed; in-guest runsc inside Kata is a
+# separate Phase 5 spike.
 if boot_pod gvisor-probe gvisor; then
   dmesg_out=$($KUBECTL -n "$NS" exec gvisor-probe -- dmesg 2>/dev/null | head -3)
   grep -qi gvisor <<<"$dmesg_out" && pass "gvisor sentry confirmed" || warn "runsc pod ran but gVisor banner not seen"

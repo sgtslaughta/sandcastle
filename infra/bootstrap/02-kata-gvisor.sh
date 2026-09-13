@@ -28,29 +28,44 @@ step "kata-deploy ${KATA_VERSION}"
 chart="$CACHE/kata-deploy-${KATA_VERSION}.tgz"
 [[ -f "$chart" ]] || curl -fsSLo "$chart" "$CHART_URL"
 
-# Only the Cloud Hypervisor shim is installed. Each extra shim is another guest
-# image, another config surface, and another runtime class an operator could
-# select by mistake; the design commits to kata-clh.
+RUNTIME_CLASS=kata-clh-runtime-rs
+
+# Only Cloud Hypervisor on the Rust runtime (runtime-rs) is installed. The Go
+# runtime's clh shim is deprecated upstream since Kata 4.0. Each extra shim is
+# another guest image, another config surface, and another runtime class an
+# operator could select by mistake. defaultShim must name an enabled shim: the
+# chart defaults it to qemu-runtime-rs, and kata-deploy exits at startup if
+# that shim is not configured.
 helm upgrade --install kata-deploy "$chart" \
   --namespace kube-system \
   --set k8sDistribution=k3s \
   --set shims.disableAll=true \
-  --set shims.clh.enabled=true \
+  --set shims.clh-runtime-rs.enabled=true \
+  --set defaultShim.amd64=clh-runtime-rs \
   --wait --timeout 15m
 
-step "waiting for node to report kata installed"
-until [[ "$(kubectl get nodes -o jsonpath='{.items[0].metadata.labels.katacontainers\.io/kata-runtime}' 2>/dev/null)" == "true" ]]; do
+step "waiting for node to report kata installed (max 10m)"
+# helm --wait does not catch a crash-looping DaemonSet pod, so bound the wait
+# and show the pod's own error instead of hanging.
+for ((i = 0; i < 120; i++)); do
+  [[ "$(kubectl get nodes -o jsonpath='{.items[0].metadata.labels.katacontainers\.io/kata-runtime}' 2>/dev/null)" == "true" ]] && break
   sleep 5
 done
+if (( i == 120 )); then
+  echo "  FAIL  node never labeled kata-runtime=true. kata-deploy pod output:"
+  kubectl -n kube-system logs -l name=kata-deploy --tail=20 2>&1 || true
+  kubectl -n kube-system get pods -o wide | grep -i kata || true
+  exit 1
+fi
 kubectl get runtimeclass
 
-step "verifying containerd actually learned the kata-clh handler"
+step "verifying containerd actually learned the $RUNTIME_CLASS handler"
 # This is the check the upstream k3s issues exist for: the DaemonSet can report
 # success while containerd never picked up the runtime.
-if sudo k3s crictl info 2>/dev/null | grep -q '"kata-clh"'; then
-  echo "  ok    containerd knows kata-clh"
+if sudo k3s crictl info 2>/dev/null | grep -q "\"$RUNTIME_CLASS\""; then
+  echo "  ok    containerd knows $RUNTIME_CLASS"
 else
-  echo "  FAIL  containerd does not list kata-clh."
+  echo "  FAIL  containerd does not list $RUNTIME_CLASS."
   echo "        Inspect: sudo ls /var/lib/rancher/k3s/agent/etc/containerd/"
   echo "        and:     sudo k3s crictl info | grep -A5 runtimes"
   exit 1

@@ -35,7 +35,7 @@ cluster:    ## k3s + cilium inside the VM, kube-proxy replaced
 	@$(VM) run infra/bootstrap/01-k3s-cilium.sh
 	@$(VM) kubeconfig
 
-kata:       ## kata-clh + gvisor runtime classes inside the VM
+kata:       ## kata-clh-runtime-rs + gvisor runtime classes inside the VM
 	@$(VM) snapshot pre-kata
 	@$(VM) run infra/bootstrap/02-kata-gvisor.sh
 
