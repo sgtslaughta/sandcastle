@@ -113,7 +113,31 @@ create_repo "npm-proxy" "npm/proxy" '{
   "httpClient": {"blocked": false, "autoBlock": true}
 }'
 
+step "docker bearer token realm"
+# Anonymous docker pulls fail without the DockerToken realm: the Docker client
+# always runs the token flow, even when no credentials are configured.
+curl -fsS --fail-with-body -u "admin:$ADMIN_PW" \
+  -X PUT -H 'Content-Type: application/json' \
+  -d '["NexusAuthenticatingRealm","DockerToken"]' \
+  "$NEXUS_URL/service/rest/v1/security/realms/active"
+
+step "docker-hub proxy"
+# DinD sidecars use this as --registry-mirror. A registry mirror must be served
+# at the root of a host:port, so the repo gets its own HTTP connector (8082)
+# rather than a /repository/ path.
+create_repo "docker-hub" "docker/proxy" '{
+  "name": "docker-hub",
+  "online": true,
+  "storage": {"blobStoreName": "default", "strictContentTypeValidation": true},
+  "proxy": {"remoteUrl": "https://registry-1.docker.io", "contentMaxAge": 1440, "metadataMaxAge": 1440},
+  "negativeCache": {"enabled": true, "timeToLive": 1440},
+  "httpClient": {"blocked": false, "autoBlock": true},
+  "docker": {"v1Enabled": false, "forceBasicAuth": false, "httpPort": 8082},
+  "dockerProxy": {"indexType": "HUB", "cacheForeignLayers": false}
+}'
+
 step "done"
 echo "apt:  $NEXUS_URL/repository/apt-ubuntu/"
 echo "pypi: $NEXUS_URL/repository/pypi-proxy/"
 echo "npm:  $NEXUS_URL/repository/npm-proxy/"
+echo "docker: http://nexus.sandcastle-mirror.svc.cluster.local:8082 (registry mirror)"

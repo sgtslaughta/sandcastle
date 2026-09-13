@@ -13,6 +13,9 @@ spec:
     - name: http
       port: 8081
       targetPort: 8081
+    - name: docker-hub
+      port: 8082
+      targetPort: 8082
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -37,6 +40,7 @@ spec:
           image: sonatype/nexus3:3.96.1
           ports:
             - containerPort: 8081
+            - containerPort: 8082 # docker-hub proxy HTTP connector (configure.sh)
           env:
             - name: INSTALL4J_ADD_VM_PARAMS
               value: "-Xms1g -Xmx1g -XX:MaxDirectMemorySize=1g -Djava.util.prefs.userRoot=/nexus-data/javaprefs"
