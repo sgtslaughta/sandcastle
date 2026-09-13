@@ -1,0 +1,79 @@
+# Phase 3 core invariant (spec: 2026-09-13-phase3-containment-core-design.md):
+# a workspace pod reaches exactly four destinations. endpointSelector {}
+# covers every pod in the namespace, not only pods carrying Coder labels, so a
+# pod created by a compromised coderd is locked down too (DR-3.1).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: workspace-egress
+  namespace: sandcastle-workspaces
+spec:
+  endpointSelector: {}
+  # Default-deny ingress: nothing dials into a workspace; the Coder tunnel is
+  # outbound from the agent.
+  ingress:
+    - {}
+  # S3 icmp-needs-ingress-rule form:
+  # ingress:
+  #   - icmps:
+  #       - fields: [{type: 3, family: IPv4}]
+  egress:
+    # DNS for in-cluster names only. External names are resolved by Envoy,
+    # never by the workspace, which closes DNS-query exfil.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - {port: "53", protocol: UDP}
+            - {port: "53", protocol: TCP}
+          rules:
+            dns:
+              - matchPattern: "*.cluster.local"
+              - matchPattern: "*.*.cluster.local"
+              - matchPattern: "*.*.*.cluster.local"
+              - matchPattern: "*.*.*.*.cluster.local"
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: sandcastle-egress
+            app: envoy-egress
+      toPorts:
+        - ports: [{port: "3128", protocol: TCP}]
+    # Nexus: package and registry reads only. Admin/REST API and uploads are
+    # refused with 403 and logged by Hubble.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: sandcastle-mirror
+            app: nexus
+      toPorts:
+        - ports: [{port: "8081", protocol: TCP}]
+          rules:
+            http:
+              - {method: GET, path: "/repository/.*"}
+              - {method: HEAD, path: "/repository/.*"}
+        - ports: [{port: "8082", protocol: TCP}]
+          rules:
+            http:
+              - {method: GET, path: "/v2/.*"}
+              - {method: HEAD, path: "/v2/.*"}
+    # coderd: Coder agent API paths only, captured from real agent traffic in
+    # spike S5. Everything else on this port (login, users, templates) is 403.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: coder
+            app.kubernetes.io/name: coder
+      toPorts:
+        - ports: [{port: "8080", protocol: TCP}]
+          rules:
+            http:
+              - {method: GET, path: "/bin/coder-linux-amd64"}
+              - {method: GET, path: "/api/v2/buildinfo"}
+              - {path: "/api/v2/workspaceagents/me/.*"}
+              - {path: "/derp.*"}
+    # S5 host-30080 form (agent uses the NodePort access URL):
+    # - toEntities: [host]
+    #   toPorts:
+    #     - ports: [{port: "30080", protocol: TCP}]
+    #       rules:
+    #         http: <same S5 list>
