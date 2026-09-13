@@ -2,6 +2,10 @@
 // (:18000). All policy state lives in Postgres; every change, pod event,
 // expiry and a one-minute resync rebuild the full Envoy snapshot and the
 // Cilium DNS policies from it.
+//
+// "sandcastle-admin migrate" applies schema migrations as the Postgres owner
+// and exits; it runs as an initContainer so the long-running server never
+// holds the owner DSN.
 package main
 
 import (
@@ -36,6 +40,10 @@ const tunnelMax = time.Hour // DR-4.10
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
+	run := serve
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		run = migrate
+	}
 	if err := run(ctx); err != nil {
 		log.Fatal(err)
 	}
@@ -49,10 +57,14 @@ func env(k string) string {
 	return v
 }
 
-func run(ctx context.Context) error {
+func migrate(ctx context.Context) error {
 	if err := store.Migrate(ctx, env("DB_OWNER_DSN"), env("DB_APP_PASSWORD")); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
+	return nil
+}
+
+func serve(ctx context.Context) error {
 	st, err := store.Open(ctx, env("DB_APP_DSN"))
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)

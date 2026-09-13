@@ -77,6 +77,27 @@ spec:
       labels: {app: sandcastle-admin}
     spec:
       serviceAccountName: sandcastle-admin
+      # Migrations run as the Postgres owner in an initContainer, so the
+      # long-running admin container only ever holds the app role's DSN.
+      initContainers:
+        - name: migrate
+          image: sandcastle/admin:0.4.0
+          imagePullPolicy: Never
+          args: ["migrate"]
+          env:
+            - name: DB_OWNER_DSN
+              valueFrom: {secretKeyRef: {name: admin-db, key: owner-dsn}}
+            - name: DB_APP_PASSWORD
+              valueFrom: {secretKeyRef: {name: admin-db, key: app-password}}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532 # distroless nonroot; numeric so kubelet can verify
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
       containers:
         - name: admin
           image: sandcastle/admin:0.4.0
@@ -85,12 +106,8 @@ spec:
             - {name: http, containerPort: 8080}
             - {name: xds, containerPort: 18000}
           env:
-            - name: DB_OWNER_DSN
-              valueFrom: {secretKeyRef: {name: admin-db, key: owner-dsn}}
             - name: DB_APP_DSN
               valueFrom: {secretKeyRef: {name: admin-db, key: app-dsn}}
-            - name: DB_APP_PASSWORD
-              valueFrom: {secretKeyRef: {name: admin-db, key: app-password}}
             - name: OAUTH_CLIENT_ID
               valueFrom: {secretKeyRef: {name: admin-oauth, key: client-id}}
             - name: OAUTH_CLIENT_SECRET
