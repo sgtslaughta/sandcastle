@@ -17,7 +17,6 @@ bad()  { printf '  FAIL  %s\n' "$1"; fail=1; }
 
 cleanup() {
   "$CODER" delete "$WS" --yes >/dev/null 2>&1 || true
-  kubectl -n default delete pod dx-probe --wait=false >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -83,17 +82,30 @@ for repo in apt-ubuntu pypi-proxy npm-proxy; do
 done
 
 # --- container builds ------------------------------------------------------
+# The agent can connect before the sidecar's daemon is up (containers start in
+# order), so wait for the daemon rather than racing it.
+docker_up=0
+for _ in $(seq 24); do wsh 'docker version' && { docker_up=1; break; }; sleep 5; done
+(( docker_up )) && pass "Docker daemon reachable from dev container" \
+  || { bad "Docker daemon never answered"; tail -5 /tmp/dx-cmd.log; }
+
 wsh 'mkdir -p /tmp/d && printf "FROM busybox:1.36\nRUN echo built\n" >/tmp/d/Dockerfile && docker build -t dx-test /tmp/d' \
   && pass "docker build in DinD sidecar" \
-  || { bad "docker build failed (overlayfs on Kata shared fs? see spec risk)"; tail -8 /tmp/dx-cmd.log; }
+  || { bad "docker build failed (is /var/lib/docker the loop-mounted ext4? see images/dind)"; tail -8 /tmp/dx-cmd.log; }
 
-# The sidecar must only listen on loopback. Probe from an ordinary pod in
-# another namespace against the workspace pod's IP.
-ws_ip=$(kubectl -n "$WS_NS" get pods -o jsonpath='{.items[0].status.podIP}')
-probe=$(kubectl -n default run dx-probe --rm -i --restart=Never --image=busybox:1.36 \
-  -- sh -c "nc -z -w3 $ws_ip 2375 && echo OPEN || echo CLOSED" 2>/dev/null | grep -E 'OPEN|CLOSED')
-[[ "$probe" == "CLOSED" ]] && pass "Docker API unreachable from other pods ($ws_ip:2375)" \
-  || bad "Docker API probe from another pod returned '$probe'"
+# The API must have no TCP presence. Check the sidecar's own listening sockets
+# rather than probing from another pod: a probe only proves "closed" if a
+# daemon was listening, which the first version of this test got wrong when
+# dockerd crash-looped on a 0.0.0.0:2375 bind it should never have attempted.
+if (( docker_up )); then
+  ws_pod=$(kubectl -n "$WS_NS" get pods -o name | head -1)
+  listeners=$(kubectl -n "$WS_NS" exec "$ws_pod" -c dind -- netstat -ltn 2>/dev/null | awk 'NR>2 {print $4}' | tr '\n' ' ')
+  grep -qE ':(2375|2376)( |$)' <<<"$listeners" \
+    && bad "Docker API listening on TCP: $listeners" \
+    || pass "Docker API has no TCP listener (sidecar listeners: ${listeners:-none})"
+else
+  bad "Docker API TCP check skipped: daemon not running, result would be meaningless"
+fi
 
 echo
 (( fail )) && { echo "phase 2 FAILED"; exit 1; }

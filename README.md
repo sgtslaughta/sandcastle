@@ -52,4 +52,4 @@ Rollback to a pre-phase snapshot: `make vm-snapshots` to list, then
 
 ## Status
 
-Phase 1 (isolation substrate) — complete: k3s + Cilium (kube-proxy replaced), Kata `kata-clh-runtime-rs`, gVisor, verified by `make verify-substrate` in the lab VM. Phase 2 (developer experience baseline) next; see the spec for the phase plan.
+Phases 1–2 complete: k3s + Cilium (kube-proxy replaced), Kata `kata-clh-runtime-rs`, gVisor; Coder workspaces on Kata with Docker builds, a Nexus mirror for apt/PyPI/npm, and admission that refuses non-Kata workspace pods. Verified by `make verify-substrate` and `make verify-dx` in the lab VM. Phase 3 (containment core: no-default-route egress) next.

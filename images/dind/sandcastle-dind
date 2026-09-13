@@ -1,0 +1,26 @@
+#!/bin/sh
+# Loop-mount an ext4 image at /var/lib/docker, then hand off to the upstream
+# entrypoint. See the Dockerfile for why overlayfs needs this under Kata.
+#
+# The backing volume is an emptyDir, so the image is created fresh with each
+# pod; Docker state lives as long as the workspace pod, like upstream dind.
+set -eu
+
+backing=/var/lib/docker-backing/docker.img
+size="${DOCKER_DISK_SIZE:-20G}"
+
+if [ ! -f "$backing" ]; then
+  # Sparse: occupies only what Docker actually writes, up to $size.
+  truncate -s "$size" "$backing"
+  mkfs.ext4 -q -m 0 "$backing"
+fi
+
+# Check for the ext4 mount specifically, not for any mountpoint: upstream
+# docker:dind declares VOLUME /var/lib/docker, so the runtime has already put a
+# virtio-fs volume there, and a plain mountpoint test skips the loop mount.
+mkdir -p /var/lib/docker
+grep -q ' /var/lib/docker ext4 ' /proc/mounts || mount -o loop "$backing" /var/lib/docker
+
+# Args beginning with "dockerd" pass through the upstream entrypoint without it
+# adding its default --host=tcp://0.0.0.0:2375 listener.
+exec dockerd-entrypoint.sh "$@"

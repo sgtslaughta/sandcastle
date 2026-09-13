@@ -1,0 +1,5 @@
+Types: deb
+URIs: http://nexus.sandcastle-mirror.svc.cluster.local:8081/repository/apt-ubuntu/
+Suites: resolute resolute-updates resolute-security
+Components: main restricted universe multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg

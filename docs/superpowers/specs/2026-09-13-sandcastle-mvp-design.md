@@ -119,8 +119,18 @@ Consequences for this design:
   selkies **websocket-only** through the Coder tunnel, software rendering,
   enlarged /dev/shm). Both run on `kata-clh-runtime-rs`; untrusted code
   inside them runs under in-guest `runsc` (see Second isolation layer).
-- DinD sidecar inside the same Kata VM, Docker API on localhost TCP only —
-  container dev DX contained by the VM boundary.
+- DinD sidecar (`images/dind`) inside the same Kata VM — container dev DX
+  contained by the VM boundary. Three Kata-specific findings from Phase 2
+  shape it:
+  - The Docker API is a unix socket on a **memory-medium** emptyDir, with no
+    TCP listener. Upstream dind silently added `tcp://0.0.0.0:2375` next to a
+    loopback flag; default emptyDirs are virtio-fs host shares on which a unix
+    socket refuses connections, while memory emptyDirs are tmpfs in the guest.
+  - `/var/lib/docker` is a sparse ext4 image loop-mounted from the volume.
+    overlayfs rejects virtio-fs as an upper layer, and tmpfs would put every
+    image layer in pod memory.
+  - Test "unreachable" claims only after proving the service is up: the first
+    Docker API probe passed because the daemon was crash-looping.
 - Honeytokens baked into every image: fake `~/.aws/credentials`, fake `.env`,
   fake enclave DSN in `/etc/hosts`, honeytoken hostname. Any touch = near-zero
   false-positive alert.
