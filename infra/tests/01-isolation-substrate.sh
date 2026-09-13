@@ -38,6 +38,9 @@ $KUBECTL get crd ciliumnetworkpolicies.cilium.io >/dev/null 2>&1 && pass "Cilium
 for rc in kata-clh-runtime-rs gvisor; do
   $KUBECTL get runtimeclass "$rc" >/dev/null 2>&1 && pass "RuntimeClass $rc" || bad "RuntimeClass $rc absent"
 done
+# Any other RuntimeClass is an unreviewed way to run a pod outside Kata.
+extra=$($KUBECTL get runtimeclass -o name 2>/dev/null | sed 's|.*/||' | grep -vxE 'kata-clh-runtime-rs|gvisor' | tr '\n' ' ')
+[[ -z "$extra" ]] && pass "no unexpected RuntimeClasses" || bad "unexpected RuntimeClasses: $extra(k3s --disable=runtimes missing?)"
 
 $KUBECTL create ns "$NS" >/dev/null 2>&1 || true
 
@@ -67,7 +70,9 @@ if boot_pod gvisor-probe gvisor; then
   dmesg_out=$($KUBECTL -n "$NS" exec gvisor-probe -- dmesg 2>/dev/null | head -3)
   grep -qi gvisor <<<"$dmesg_out" && pass "gvisor sentry confirmed" || warn "runsc pod ran but gVisor banner not seen"
 else
-  warn "runsc pod did not become ready"
+  # A RuntimeClass that exists but cannot start pods is worse than none: it
+  # looks available to anyone selecting it. Fail rather than warn.
+  bad "gvisor pod did not become ready"
 fi
 
 echo

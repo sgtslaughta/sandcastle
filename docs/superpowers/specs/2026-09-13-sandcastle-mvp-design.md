@@ -125,6 +125,12 @@ Consequences for this design:
   fake enclave DSN in `/etc/hosts`, honeytoken hostname. Any touch = near-zero
   false-positive alert.
 - No Kubernetes service account token mounted; any API-server request alerts.
+- Admission enforces the boundary: a `ValidatingAdmissionPolicy` rejects any
+  pod in a workspace namespace whose `runtimeClassName` is not
+  `kata-clh-runtime-rs`. Removing other RuntimeClasses (k3s
+  `--disable=runtimes`) shrinks the menu, but a pod with no class at all still
+  runs on runc; only admission closes that. Built in Phase 2 with the first
+  workspace namespace.
 
 ### Enclave namespaces (2, mock)
 

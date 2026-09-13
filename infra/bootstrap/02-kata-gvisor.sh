@@ -92,14 +92,27 @@ fi
 runsc --version | head -1
 
 # k3s regenerates config.toml on restart, so the runsc handler goes in a drop-in
-# that survives. k3s merges every *.toml under containerd.d into its config.
-sudo mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/containerd.d
-sudo tee /var/lib/rancher/k3s/agent/etc/containerd/containerd.d/runsc.toml >/dev/null <<'TOML'
+# that survives. k3s 1.36 generates a containerd v3 config whose only import is
+# config-v3.toml.d/*.toml (the same directory kata-deploy writes to); files in
+# the similarly named containerd.d are silently ignored. runtime_path is set
+# explicitly, as kata-deploy does, rather than relying on containerd's PATH.
+CONTAINERD_DIR=/var/lib/rancher/k3s/agent/etc/containerd
+sudo rm -f "$CONTAINERD_DIR/containerd.d/runsc.toml"
+sudo mkdir -p "$CONTAINERD_DIR/config-v3.toml.d"
+sudo tee "$CONTAINERD_DIR/config-v3.toml.d/runsc.toml" >/dev/null <<'TOML'
 [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runsc]
-  runtime_type = "io.containerd.runsc.v1"
+runtime_type = "io.containerd.runsc.v1"
+runtime_path = "/usr/local/bin/containerd-shim-runsc-v1"
 TOML
 sudo systemctl restart k3s
 until kubectl get --raw=/readyz >/dev/null 2>&1; do sleep 2; done
+
+if sudo k3s crictl info 2>/dev/null | grep -q '"runsc"'; then
+  echo "  ok    containerd knows runsc"
+else
+  echo "  FAIL  containerd does not list runsc; check $CONTAINERD_DIR/config.toml imports"
+  exit 1
+fi
 
 kubectl apply -f - <<'YAML'
 apiVersion: node.k8s.io/v1

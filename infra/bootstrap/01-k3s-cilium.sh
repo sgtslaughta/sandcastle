@@ -19,6 +19,9 @@ API_PORT=6443
 
 step() { printf '\n==> %s\n' "$1"; }
 
+# --disable=runtimes stops k3s publishing RuntimeClasses (crun, nvidia, wasm
+# shims, ...) for every runtime it knows of. Each is a way to schedule a pod
+# outside Kata; the cluster should offer only the classes this repo installs.
 step "k3s ${K3S_VERSION} (node IP ${NODE_IP})"
 if systemctl is-active --quiet k3s; then
   echo "k3s already running: $(k3s --version | head -1)"
@@ -31,7 +34,8 @@ else
       --disable-network-policy \
       --disable-kube-proxy \
       --disable=traefik \
-      --disable=servicelb" \
+      --disable=servicelb \
+      --disable=runtimes" \
     sh -s -
 fi
 
