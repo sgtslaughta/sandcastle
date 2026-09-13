@@ -76,7 +76,7 @@ egress-lock:   ## host: drop lab VM traffic except the egress network (sudo)
 egress-unlock: ## host: remove the lock for bootstrap steps (sudo)
 	@sudo infra/vm/01-host-egress-nft.sh unlock
 
-policy:     ## re-apply network policies, e.g. after editing platform/policy/workspace-dns-allow.yaml
+policy:     ## re-apply static network policies (DNS allow rules now live in sandcastle-admin zones)
 	@$(VM) run 'kubectl apply -f platform/policy/'
 
 verify-containment: ## workspace reaches only its four destinations, denials are visible
@@ -106,3 +106,15 @@ admin-test: GO_DOCKER_ARGS = --network sc-admin-test -e ADMIN_TEST_DSN=postgres:
 
 admin-smoke: ## real envoy v1.39.1 accepts sandcastle-admin xds (docker)
 	admin/hack/smoke.sh
+
+# Phase 4
+admin-image: ## build sandcastle-admin on the host and import it into the VM
+	docker build -t sandcastle/admin:0.4.0 admin
+	docker save sandcastle/admin:0.4.0 | $(VM) ssh 'sudo k3s ctr -n k8s.io images import -'
+
+admin:      ## coder oauth2, admin postgres + deployment, envoy on xds (run egress-unlock first)
+	@$(VM) snapshot pre-admin
+	@$(VM) run infra/bootstrap/05-admin.sh
+
+verify-admin: ## zones, requests, grants, revocation, expiry and fail-closed, end to end
+	@$(VM) run infra/tests/04-admin.sh

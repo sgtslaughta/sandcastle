@@ -25,6 +25,11 @@ spec:
         - ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]
           rules:
             dns: [{matchPattern: "*"}]
+    # xDS config and access logs from/to sandcastle-admin (Phase 4).
+    - toEndpoints:
+        - matchLabels: {k8s:io.kubernetes.pod.namespace: sandcastle-admin, app: sandcastle-admin}
+      toPorts:
+        - ports: [{port: "18000", protocol: TCP}]
     - toCIDRSet:
         - cidr: 0.0.0.0/0
           except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 127.0.0.0/8]

@@ -1,14 +1,12 @@
-# Egress gate (Phase 3, static allowlist; Phase 4 replaces it with xDS from
-# sandcastle-admin). Explicit proxy: workspaces set HTTP(S)_PROXY, and any
-# other path is dropped by platform/policy/workspaces.yaml.
+# Egress gate. Explicit proxy: workspaces set HTTP(S)_PROXY, and any other
+# path is dropped by platform/policy/workspaces.yaml.
 #
-# HTTPS is two-stage. Stage 1 checks the CONNECT authority against the
-# allowlist and terminates the tunnel into the internal listener sni_gate.
-# Stage 2 reads the TLS SNI, requires it to be allowlisted too, and dials the
-# SNI host, so an allowlisted CONNECT cannot carry a handshake for another
-# host. Denials return 403 plus x-sandcastle-denied (browsers hide
-# refused-CONNECT bodies; no TLS interception, DR-3.4). The source IP in the
-# access log is the workspace identity (DR-3.5).
+# All listeners, routes and clusters come from sandcastle-admin over ADS
+# (Phase 4 DR-4.8): per-host virtual hosts allow only the pod IPs granted
+# that host, and per-host SNI listeners bind TLS to the CONNECT host. With no
+# admin, a freshly started Envoy has no listener and serves nothing (fail
+# closed, DR-4.6); a running one keeps its last snapshot. Access logs go to
+# stdout (Hubble/Phase 6) and to admin over ALS (denial queue).
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -21,131 +19,39 @@ metadata:
   namespace: sandcastle-egress
 data:
   envoy.yaml: |
+    node: {id: sandcastle-egress, cluster: sandcastle-egress}
     bootstrap_extensions:
       - name: envoy.bootstrap.internal_listener
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.bootstrap.internal_listener.v3.InternalListener
     admin:
       address: {socket_address: {address: 127.0.0.1, port_value: 9901}}
+    dynamic_resources:
+      ads_config:
+        api_type: GRPC
+        transport_api_version: V3
+        grpc_services: [{envoy_grpc: {cluster_name: admin}}]
+      lds_config: {ads: {}, resource_api_version: V3}
+      cds_config: {ads: {}, resource_api_version: V3}
     static_resources:
-      listeners:
-        - name: proxy
-          address: {socket_address: {address: 0.0.0.0, port_value: 3128}}
-          filter_chains:
-            - filters:
-                - name: envoy.filters.network.http_connection_manager
-                  typed_config:
-                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-                    stat_prefix: egress
-                    upgrade_configs: [{upgrade_type: CONNECT}]
-                    access_log:
-                      - name: envoy.access_loggers.stdout
-                        typed_config:
-                          "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
-                          log_format:
-                            json_format:
-                              time: "%START_TIME%"
-                              src: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
-                              method: "%REQ(:METHOD)%"
-                              authority: "%REQ(:AUTHORITY)%"
-                              code: "%RESPONSE_CODE%"
-                              flags: "%RESPONSE_FLAGS%"
-                              bytes_up: "%BYTES_RECEIVED%"
-                              bytes_down: "%BYTES_SENT%"
-                    http_filters:
-                      - name: envoy.filters.http.dynamic_forward_proxy
-                        typed_config:
-                          "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig
-                          dns_cache_config: {name: dfp, dns_lookup_family: V4_ONLY}
-                      - name: envoy.filters.http.router
-                        typed_config:
-                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
-                    route_config:
-                      virtual_hosts:
-                        - name: allow_https
-                          domains: ["example.com:443"]
-                          routes:
-                            - match: {connect_matcher: {}}
-                              route:
-                                cluster: sni_gate
-                                upgrade_configs: [{upgrade_type: CONNECT, connect_config: {}}]
-                        - name: allow_http
-                          domains: ["example.com", "example.com:80"]
-                          routes:
-                            - match: {prefix: "/"}
-                              route: {cluster: dfp_http}
-                        - name: deny
-                          domains: ["*"]
-                          response_headers_to_add:
-                            - header:
-                                key: x-sandcastle-denied
-                                value: "host=%REQ(:AUTHORITY)%; source=%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
-                          routes:
-                            - match: {connect_matcher: {}}
-                              direct_response: {status: 403}
-                            - match: {prefix: "/"}
-                              direct_response:
-                                status: 403
-                                body:
-                                  inline_string: "sandcastle: egress to this host is not allowed for this workspace. Access requests arrive in Phase 4.\n"
-        - name: sni_gate
-          internal_listener: {}
-          # Stage 2 refusals (SNI not allowlisted) close before any HTTP
-          # response, so the proxy listener logs only the CONNECT. Log every
-          # stage 2 connection with its SNI; flags NR marks a refusal. The
-          # source here is internal: correlate with the stage 1 line by time.
-          access_log:
-            - name: envoy.access_loggers.stdout
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
-                log_format:
-                  json_format:
-                    time: "%START_TIME%"
-                    stage: "sni"
-                    sni: "%REQUESTED_SERVER_NAME%"
-                    flags: "%RESPONSE_FLAGS%"
-                    bytes_up: "%BYTES_RECEIVED%"
-                    bytes_down: "%BYTES_SENT%"
-          listener_filters:
-            - name: envoy.filters.listener.tls_inspector
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector
-          filter_chains:
-            - filter_chain_match: {server_names: ["example.com"]}
-              filters:
-                - name: envoy.filters.network.sni_dynamic_forward_proxy
-                  typed_config:
-                    "@type": type.googleapis.com/envoy.extensions.filters.network.sni_dynamic_forward_proxy.v3.FilterConfig
-                    port_value: 443
-                    dns_cache_config: {name: dfp, dns_lookup_family: V4_ONLY}
-                - name: envoy.filters.network.tcp_proxy
-                  typed_config:
-                    "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
-                    stat_prefix: sni
-                    cluster: dfp_sni
       clusters:
-        - name: sni_gate
+        # ADS and ALS share this cluster. ponytail: plaintext in-cluster; only
+        # this pod may reach admin :18000 (platform/policy/admin.yaml).
+        - name: admin
+          type: STRICT_DNS
+          dns_lookup_family: V4_ONLY
+          connect_timeout: 2s
+          typed_extension_protocol_options:
+            envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+              "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+              explicit_http_config: {http2_protocol_options: {}}
           load_assignment:
-            cluster_name: sni_gate
+            cluster_name: admin
             endpoints:
               - lb_endpoints:
                   - endpoint:
                       address:
-                        envoy_internal_address: {server_listener_name: sni_gate}
-        - name: dfp_http
-          lb_policy: CLUSTER_PROVIDED
-          cluster_type:
-            name: envoy.clusters.dynamic_forward_proxy
-            typed_config:
-              "@type": type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig
-              dns_cache_config: {name: dfp, dns_lookup_family: V4_ONLY}
-        - name: dfp_sni
-          lb_policy: CLUSTER_PROVIDED
-          cluster_type:
-            name: envoy.clusters.dynamic_forward_proxy
-            typed_config:
-              "@type": type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig
-              dns_cache_config: {name: dfp, dns_lookup_family: V4_ONLY}
+                        socket_address: {address: sandcastle-admin.sandcastle-admin.svc.cluster.local, port_value: 18000}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -161,16 +67,18 @@ spec:
     metadata:
       labels: {app: envoy-egress}
       annotations:
-        sandcastle.io/config-rev: "2" # bump to roll pods after a ConfigMap change
+        sandcastle.io/config-rev: "3" # bump to roll pods after a ConfigMap change
     spec:
       automountServiceAccountToken: false
       containers:
         - name: envoy
           image: envoyproxy/envoy:v1.39.1
-          # Access logs are the denial evidence. Envoy writes them through its
-          # file flusher, which defaults to every 10s; 1s keeps "seen within
-          # seconds" true.
-          args: ["-c", "/etc/envoy/envoy.yaml", "--log-level", "warn", "--file-flush-interval-msec", "1000"]
+          # Access logs are the denial evidence; Envoy flushes them every 10s
+          # by default, 1s keeps "seen within seconds" true. Drain 5s,
+          # immediate: a revoked host's listener closes its open tunnels
+          # within seconds (spike S3).
+          args: ["-c", "/etc/envoy/envoy.yaml", "--log-level", "warn", "--file-flush-interval-msec", "1000",
+                 "--drain-time-s", "5", "--drain-strategy", "immediate"]
           ports:
             - containerPort: 3128
           readinessProbe:

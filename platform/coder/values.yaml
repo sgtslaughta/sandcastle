@@ -29,6 +29,10 @@ coder:
     # that trains people to ignore drop alerts.
     - name: CODER_BLOCK_DIRECT
       value: "true"
+    # OAuth2 provider: sandcastle-admin logs users in through Coder
+    # (Phase 4 DR-4.1; works on OSS 2.36.5 per spike S1).
+    - name: CODER_EXPERIMENTS
+      value: "oauth2"
 
   resources:
     requests:
