@@ -5,6 +5,7 @@ package cilium
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -128,41 +129,43 @@ func cnp(name string, expr, dns []any) *unstructured.Unstructured {
 }
 
 // Apply creates or updates every desired policy, then deletes managed
-// policies that are no longer desired.
+// policies that are no longer desired. One bad object never blocks the rest:
+// a revoked DNS grant must still be pruned. All failures are joined.
 func Apply(ctx context.Context, dyn dynamic.Interface, desired []*unstructured.Unstructured) error {
 	api := dyn.Resource(GVR).Namespace(Namespace)
 	want := map[string]bool{}
+	var errs []error
 	for _, d := range desired {
 		want[d.GetName()] = true
 		cur, err := api.Get(ctx, d.GetName(), metav1.GetOptions{})
 		switch {
 		case apierrors.IsNotFound(err):
 			if _, err := api.Create(ctx, d, metav1.CreateOptions{}); err != nil {
-				return fmt.Errorf("create %s: %w", d.GetName(), err)
+				errs = append(errs, fmt.Errorf("create %s: %w", d.GetName(), err))
 			}
 		case err != nil:
-			return fmt.Errorf("get %s: %w", d.GetName(), err)
+			errs = append(errs, fmt.Errorf("get %s: %w", d.GetName(), err))
 		case cur.GetLabels()[ownerLabel] != ownerValue:
-			return fmt.Errorf("%s exists and is not managed by %s", d.GetName(), ownerValue)
+			errs = append(errs, fmt.Errorf("%s exists and is not managed by %s", d.GetName(), ownerValue))
 		case !reflect.DeepEqual(cur.Object["spec"], d.Object["spec"]):
 			upd := d.DeepCopy()
 			upd.SetResourceVersion(cur.GetResourceVersion())
 			if _, err := api.Update(ctx, upd, metav1.UpdateOptions{}); err != nil {
-				return fmt.Errorf("update %s: %w", d.GetName(), err)
+				errs = append(errs, fmt.Errorf("update %s: %w", d.GetName(), err))
 			}
 		}
 	}
 	list, err := api.List(ctx, metav1.ListOptions{LabelSelector: ownerLabel + "=" + ownerValue})
 	if err != nil {
-		return fmt.Errorf("list: %w", err)
+		return errors.Join(append(errs, fmt.Errorf("list: %w", err))...)
 	}
 	for _, item := range list.Items {
 		if want[item.GetName()] {
 			continue
 		}
 		if err := api.Delete(ctx, item.GetName(), metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("delete %s: %w", item.GetName(), err)
+			errs = append(errs, fmt.Errorf("delete %s: %w", item.GetName(), err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }

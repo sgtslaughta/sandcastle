@@ -102,8 +102,14 @@ func TestApplyCreatesUpdatesPrunesOnlyOwned(t *testing.T) {
 	// A desired name colliding with an unmanaged object is refused.
 	clash := desired[0].DeepCopy()
 	clash.SetName("workspace-egress")
-	if err := Apply(ctx, dyn, []*unstructured.Unstructured{clash}); err == nil {
-		t.Fatal("expected refusal to overwrite unmanaged policy")
+	// ...without blocking the other desired objects or the prune.
+	other := Render(policy.Input{DefaultZone: "x", ZoneRules: map[string][]policy.Rule{"x": {{Kind: "dns", Value: "d.com"}}}})[0]
+	if err := Apply(ctx, dyn, []*unstructured.Unstructured{clash, other}); err == nil || !strings.Contains(err.Error(), "workspace-egress") {
+		t.Fatalf("expected refusal to overwrite unmanaged policy, got %v", err)
+	}
+	list, _ = dyn.Resource(GVR).Namespace(Namespace).List(ctx, metav1.ListOptions{})
+	if got := names(ptrs(list.Items)); got != "workspace-egress,ws-dns-zone-x" {
+		t.Fatalf("after partial failure: %s", got)
 	}
 }
 
