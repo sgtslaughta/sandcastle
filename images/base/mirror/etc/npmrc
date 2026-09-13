@@ -1,1 +1,6 @@
 registry=http://nexus.sandcastle-mirror.svc.cluster.local:8081/repository/npm-proxy/
+# npm audit POSTs the dependency tree to the registry; Nexus CE does not
+# serve audits and workspace policy refuses writes to Nexus, so every install
+# would record policy drops. Scanning belongs to the airlock, not the workspace.
+audit=false
+fund=false

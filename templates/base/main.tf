@@ -57,6 +57,14 @@ provider "kubernetes" {
 data "coder_workspace" "me" {}
 data "coder_workspace_owner" "me" {}
 
+locals {
+  # The image routes all HTTP(S) through the egress gate. The agent init
+  # script downloads the agent binary from the access URL, and Envoy denies
+  # that host by design, so it must go direct (the workspace policy admits
+  # exactly the agent's requests to coderd).
+  no_proxy = ".cluster.local,localhost,127.0.0.1,${regex("^https?://([^:/]+)", data.coder_workspace.me.access_url)[0]}"
+}
+
 resource "coder_agent" "main" {
   os             = "linux"
   arch           = "amd64"
@@ -212,6 +220,14 @@ resource "kubernetes_deployment_v1" "main" {
             name  = "CODER_AGENT_TOKEN"
             value = coder_agent.main.token
           }
+          env {
+            name  = "NO_PROXY"
+            value = local.no_proxy
+          }
+          env {
+            name  = "no_proxy"
+            value = local.no_proxy
+          }
           resources {
             requests = {
               "cpu"    = "500m"
@@ -257,6 +273,12 @@ resource "kubernetes_deployment_v1" "main" {
             "--group=1000",
             "--registry-mirror=http://nexus.sandcastle-mirror.svc.cluster.local:8082",
             "--insecure-registry=nexus.sandcastle-mirror.svc.cluster.local:8082",
+            # Classic image store. Docker 29's default containerd store treats
+            # the mirror and Docker Hub as one host list and contacts Hub even
+            # when the mirror serves the pull: a policy drop on every pull.
+            # The classic store uses Hub only if the mirror fails, and then
+            # the drop is a real signal.
+            "--feature=containerd-snapshotter=false",
           ]
           env {
             name  = "DOCKER_TLS_CERTDIR"
