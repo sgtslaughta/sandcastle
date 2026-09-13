@@ -15,7 +15,7 @@ still reaches exactly four destinations, and sandcastle-admin is not one.
 ## Scope
 
 In:
-- `sandcastle-admin`: one Go binary, htmx UI, own Postgres.
+- `sandcastle-admin`: one Go binary, server-rendered HTML forms (DR-4.11), own Postgres.
 - Login through Coder's OAuth2 provider; Coder role decides admin rights.
 - Zones: create, clone (with rules), edit, delete, set default, move workspaces.
 - Rules of two kinds: proxy host (Envoy) and DNS name (Cilium).
@@ -117,7 +117,8 @@ Rule values:
 2. Admin maps the source IP to a workspace via the pod watcher, then upserts
    `denials`. Rows are capped at 200 per workspace (oldest dropped) and
    updated at most once per second per key.
-3. The 403 body carries `http://<node>:30081/r?ws=<id>&host=<host>&port=<p>`.
+3. The 403 body carries `http://<node>:30081/r?src=<source IP>&host=<authority>`
+   (Envoy knows the source IP, not the workspace ID; admin resolves the IP).
    The owner opens it in their own browser, outside the workspace, and logs in
    via Coder. The form is prefilled; they add a justification and submit.
 4. Only the workspace owner, or an admin, may file for that workspace.
@@ -163,6 +164,7 @@ and the admin interface on 127.0.0.1. Admin serves everything else:
   `server_names: [H]` → `sni_dynamic_forward_proxy` → `dfp_sni`. The SNI is
   bound to the stage-1 host by construction, so workspace A cannot use its
   allowed CONNECT to carry an SNI that only workspace B may use.
+- **Tunnel cap:** every CONNECT route sets `max_stream_duration: 3600s` (DR-4.10).
 - **Listener names:** `<h>` = short hash of (H, sorted IP set). Any change to
   who may reach H renames the listener; Envoy drains the old one, which closes
   already-open tunnels (Spike S3). Drain time is set short, 5 s.
@@ -362,3 +364,20 @@ reads its allowlist from the seeded default zone.
 - **What:** Envoy streams access logs over gRPC to admin on the xDS port; stdout logs stay for Hubble/Phase 6.
 - **Why:** structured entries, no parsing, no `pods/log` RBAC into the egress namespace.
 - **Alternatives:** client-go follow of Envoy pod logs.
+
+### DR-4.10 One-hour cap on proxied tunnels
+- **Who:** owner, proposed by Claude after spike S3.
+- **When:** 2026-09-13, spike gate.
+- **Where:** `internal/xds` CONNECT route action `max_stream_duration`.
+- **What:** Envoy closes any CONNECT tunnel after 1 hour; clients reconnect and are re-checked against current policy.
+- **Why:** defense in depth: if listener-swap revocation (S3) ever misses a tunnel, exposure is bounded. Package and image pulls go via Nexus, so they are unaffected.
+- **Alternatives:** 8-hour cap (weaker bound); no cap (relies on S3 alone).
+
+### DR-4.11 Plain HTML forms instead of htmx; seeded default zone
+- **Who:** Claude, while planning the build.
+- **When:** 2026-09-13.
+- **Where:** `internal/web`, `internal/store` seed.
+- **What:** server-rendered pages with POST-redirect-GET forms and no JavaScript. The first start seeds zone `default` with host `example.com` on 443 and 80, matching the Phase 3 allowlist.
+- **Why:** an air-gapped browser cannot load htmx from a CDN; vendoring adds a file for no flow that needs partial swaps. The seed keeps the Phase 3 suite green.
+- **Alternatives:** vendored htmx (add when a page needs live updates, e.g. the queue).
+
