@@ -103,3 +103,6 @@ admin-test: ## sandcastle-admin tests with a throwaway postgres (docker)
 
 # -p 1: store and web tests share one Postgres server and its roles.
 admin-test: GO_DOCKER_ARGS = --network sc-admin-test -e ADMIN_TEST_DSN=postgres://postgres:test@sc-admin-testdb:5432/postgres?sslmode=disable
+
+admin-smoke: ## real envoy v1.39.1 accepts sandcastle-admin xds (docker)
+	admin/hack/smoke.sh
