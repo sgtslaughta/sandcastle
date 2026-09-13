@@ -1,0 +1,20 @@
+# Phase 2 platform namespaces. `sandcastle-workspaces` carries the
+# `sandcastle.io/zone-type: workspace` label so the ValidatingAdmissionPolicy
+# binding in platform/admission/workspace-policy.yaml can select it without
+# hard-coding the namespace name.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: coder
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sandcastle-mirror
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sandcastle-workspaces
+  labels:
+    sandcastle.io/zone-type: workspace

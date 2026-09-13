@@ -1,0 +1,67 @@
+# Single package mirror for the air-gapped lab: apt, PyPI, npm all proxy
+# through here so the workspace allowlist collapses to one hostname.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexus
+  namespace: sandcastle-mirror
+spec:
+  type: ClusterIP
+  selector:
+    app: nexus
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nexus
+  namespace: sandcastle-mirror
+spec:
+  serviceName: nexus
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nexus
+  template:
+    metadata:
+      labels:
+        app: nexus
+    spec:
+      securityContext:
+        fsGroup: 200
+      containers:
+        - name: nexus
+          image: sonatype/nexus3:3.96.1
+          ports:
+            - containerPort: 8081
+          env:
+            - name: INSTALL4J_ADD_VM_PARAMS
+              value: "-Xms1g -Xmx1g -XX:MaxDirectMemorySize=1g -Djava.util.prefs.userRoot=/nexus-data/javaprefs"
+          volumeMounts:
+            - name: nexus-data
+              mountPath: /nexus-data
+          readinessProbe:
+            httpGet:
+              path: /service/rest/v1/status
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 30
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              memory: 3Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: nexus-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 30Gi

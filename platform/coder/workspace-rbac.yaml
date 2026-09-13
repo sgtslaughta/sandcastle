@@ -1,0 +1,43 @@
+# Grants the Coder service account (namespace `coder`) just enough to run
+# workspaces in `sandcastle-workspaces`. No secrets, no serviceaccounts, no
+# cluster-wide rules: least privilege means a compromised Coder deployment
+# can only create pods, and the ValidatingAdmissionPolicy in
+# platform/admission/workspace-policy.yaml forces every pod it creates here
+# into a Kata guest anyway.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: coder-workspaces
+  namespace: sandcastle-workspaces
+rules:
+  - apiGroups: ["", "apps"]
+    resources:
+      - pods
+      - pods/log
+      - pods/exec
+      - persistentvolumeclaims
+      - deployments
+      - events
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+      - patch
+      - delete
+      - deletecollection
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: coder-workspaces
+  namespace: sandcastle-workspaces
+subjects:
+  - kind: ServiceAccount
+    name: coder
+    namespace: coder
+roleRef:
+  kind: Role
+  name: coder-workspaces
+  apiGroup: rbac.authorization.k8s.io

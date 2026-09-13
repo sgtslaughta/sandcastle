@@ -1,0 +1,33 @@
+# Helm values for coder-v2/coder 2.36.5 (https://helm.coder.com/v2). Keys
+# checked against the chart's own values.yaml at tag v2.36.5.
+coder:
+  service:
+    type: NodePort
+    httpNodePort: "30080"
+
+  serviceAccount:
+    # Coder must not create pods in its own namespace, where the Kata
+    # admission policy does not apply; workspace RBAC is granted only in
+    # sandcastle-workspaces by platform/coder/workspace-rbac.yaml.
+    workspacePerms: false
+
+  env:
+    - name: CODER_PG_CONNECTION_URL
+      valueFrom:
+        secretKeyRef:
+          name: coder-db-url
+          key: url
+    # Placeholder substituted with NODE_IP by infra/bootstrap/03-platform.sh
+    # via sed, since it is only known at bootstrap time and there is no yq
+    # on the box to patch a single list entry cleanly.
+    - name: CODER_ACCESS_URL
+      value: "__CODER_ACCESS_URL__"
+    - name: CODER_TELEMETRY_ENABLE
+      value: "false"
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi

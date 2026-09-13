@@ -1,0 +1,53 @@
+# Closes the gap the substrate alone leaves open.
+#
+# k3s is bootstrapped with `--disable=runtimes` so no RuntimeClass but
+# `kata-clh-runtime-rs` (and the sibling `gvisor` class) exists to select, but
+# a pod with no runtimeClassName at all still lands on plain runc: removing
+# other classes shrinks the menu, it does not close the door. This policy is
+# the door: it rejects any workspace pod that does not explicitly request
+# `kata-clh-runtime-rs`.
+#
+# privileged is tolerated only because the runtimeClassName rule forces every
+# pod into a Kata guest, where privilege reaches the guest kernel and not the
+# node (kata-deploy sets privileged_without_host_devices). The host-namespace
+# and hostPath rules close what Kata does not: hostNetwork/hostPID/hostIPC ask
+# the runtime to join node namespaces, and Kata's virtio-fs shares hostPath
+# mounts straight into the guest, bypassing the VM boundary regardless of
+# runtimeClassName.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: sandcastle-workspace-pods
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  validations:
+    - expression: "has(object.spec.runtimeClassName) && object.spec.runtimeClassName == 'kata-clh-runtime-rs'"
+      message: "workspace pods must set runtimeClassName: kata-clh-runtime-rs"
+    - expression: "has(object.spec.automountServiceAccountToken) && object.spec.automountServiceAccountToken == false"
+      message: "workspace pods must set automountServiceAccountToken: false"
+    - expression: "!has(object.spec.hostNetwork) || object.spec.hostNetwork == false"
+      message: "workspace pods must not use hostNetwork"
+    - expression: "!has(object.spec.hostPID) || object.spec.hostPID == false"
+      message: "workspace pods must not use hostPID"
+    - expression: "!has(object.spec.hostIPC) || object.spec.hostIPC == false"
+      message: "workspace pods must not use hostIPC"
+    - expression: "!has(object.spec.volumes) || object.spec.volumes.all(v, !has(v.hostPath))"
+      message: "workspace pods must not mount hostPath volumes"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: sandcastle-workspace-pods-binding
+spec:
+  policyName: sandcastle-workspace-pods
+  validationActions: ["Deny"]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        sandcastle.io/zone-type: workspace

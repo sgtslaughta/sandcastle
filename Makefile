@@ -1,4 +1,4 @@
-.PHONY: preflight vm-host vm vm-ssh vm-console vm-snapshots vm-revert vm-destroy cluster kata verify-substrate
+.PHONY: preflight vm-host vm vm-ssh vm-console vm-snapshots vm-revert vm-destroy cluster kata verify-substrate platform image template verify-dx
 
 VM := infra/vm/sandcastle-vm.sh
 
@@ -45,3 +45,17 @@ kata:       ## kata-clh-runtime-rs + gvisor runtime classes inside the VM
 # falsely pass.
 verify-substrate: ## prove the workspace kernel is not the VM's kernel
 	@$(VM) run infra/tests/01-isolation-substrate.sh
+
+# Phase 2
+platform:   ## coder + postgres + nexus + workspace admission policy, inside the VM
+	@$(VM) snapshot pre-platform
+	@$(VM) run infra/bootstrap/03-platform.sh
+
+image:      ## build the base workspace image on the host and import it into the VM
+	@images/build-import.sh
+
+template:   ## push the base Coder template
+	@$(VM) run '$$HOME/.local/bin/coder templates push base -d templates/base --variable namespace=sandcastle-workspaces --yes'
+
+verify-dx:  ## workspace works through the mirror; admission refuses non-kata pods
+	@$(VM) run infra/tests/02-dx-baseline.sh
