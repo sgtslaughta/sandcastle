@@ -44,11 +44,11 @@ workspace pod (Kata)                 sandcastle-egress ns            host GAME-0
 |---|---|---|
 | Envoy egress gate | `platform/egress/` | Deployment, 1 replica, static config (xDS in Phase 4). Stage 1: HTTP connection manager checks the CONNECT authority / HTTP host against the allowlist. Stage 2: the terminated CONNECT stream goes to an internal listener with `tls_inspector`; the SNI must also be allowlisted and the upstream is dialled by SNI. Denied → 403 with `x-sandcastle-denied` header (host, workspace IP); plain HTTP also gets a body page. |
 | Workspace policy | `platform/policy/workspaces.yaml` | CiliumNetworkPolicy in `sandcastle-workspaces`, `endpointSelector: {}` (every pod, not Coder labels). Egress rules per the invariant table; L7 HTTP rules on coderd and Nexus; DNS `matchPattern` rules. No ingress. |
-| Platform policies | `platform/policy/` | Envoy: ingress from workspaces :3128 only; egress DNS + world 80/443. Nexus: ingress :8081/8082 from workspaces and platform; egress DNS + world 443. |
+| Platform policies | `platform/policy/platform.yaml` | Envoy: ingress from workspaces :3128 only; egress DNS + public 80/443. Nexus: ingress :8081/8082 from workspaces; egress DNS + public 80/443. coderd (egress only): DNS, coder-db :5432, kube-apiserver :6443, host :30080 (DERP health), public 443 (Terraform providers). "Public" = 0.0.0.0/0 minus private ranges, so DNS rebinding to the LAN or an enclave is not a route. |
 | Cilium config | `infra/bootstrap/04-containment.sh` | Helm upgrade: `egressGateway.enabled=true`, `bpf.masquerade=true`, policy deny response ICMP. Snapshot `pre-containment` first. |
-| Egress gateway | `platform/policy/egress-gateway.yaml` | `CiliumEgressGatewayPolicy` selecting Envoy and Nexus pods; SNAT via the VM's second NIC. |
+| Egress gateway | `platform/policy/egress-gateway.yaml` | `CiliumEgressGatewayPolicy` selecting Envoy, Nexus and coderd pods; SNAT via the VM's second NIC. |
 | Egress network | `infra/vm/sandcastle-vm.sh` | libvirt NAT network `sandcastle-egress` (192.168.130.0/24) and a second VM NIC. |
-| Host layer | `infra/vm/01-host-egress-nft.sh` | nftables table `inet sandcastle`, forward hook only. Lock: drop + log `sandcastle-deny` for traffic from the VM primary IP leaving the host; accept from the egress network. Unlock: flush the drop rule. |
+| Host layer | `infra/vm/01-host-egress-nft.sh` | nftables table `inet sandcastle`, input + forward hooks, every rule scoped to `virbr0`/`virbr-sce`. Lock: forward only egress IP → public 80/443; input only DHCP/DNS (plus established) from the VM; everything else from the VM logged `sandcastle-deny` and dropped. Unlock: delete the table. Not persistent across host reboot; the verify suite fails while unlocked. |
 | Coder | `platform/coder/values.yaml` | `CODER_BLOCK_DIRECT=true`: DERP only, so denied STUN/UDP is not alert noise. |
 | Base image | `images/base` | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY=.cluster.local,localhost,127.0.0.1`. |
 | DinD image/template | `images/dind`, `templates/base` | `--registry-mirror` pointing at the Nexus docker-hub proxy (:8082). |
@@ -139,7 +139,7 @@ Must be seen:
 - Hubble L7 and DNS denial events.
 
 `make verify-host-egress` runs on the host with sudo: the nft table exists, it
-hooks forward only, and `sandcastle-deny` log lines appeared during the VM test.
+hooks only input/forward with every rule scoped to the lab bridges, and `sandcastle-deny` log lines appeared during the VM test.
 
 ## Decision records
 
