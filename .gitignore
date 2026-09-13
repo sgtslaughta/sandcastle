@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Sandcastle
+.remember/
+kubeconfig
+*.tfstate
+*.tfstate.backup
+.terraform/
+bin/
