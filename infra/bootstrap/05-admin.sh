@@ -16,7 +16,7 @@ NODE_IP="${NODE_IP:-$(ip -4 route get 1.1.1.1 | awk '{print $7; exit}')}"
 CODER="$HOME/.local/bin/coder"
 CODER_URL="http://${NODE_IP}:30080"
 PUBLIC_URL="http://${NODE_IP}:30081"
-TEST_HOOKS="${TEST_HOOKS:-1}"
+TEST_HOOKS="${TEST_HOOKS:-1}" # lab default; production must set TEST_HOOKS=0
 NS=sandcastle-admin
 
 step() { printf '\n==> %s\n' "$1"; }
@@ -25,8 +25,21 @@ json() { python3 -c "import json,sys; print(json.load(sys.stdin)[\"$1\"])"; }
 
 step "coder: oauth2 provider experiment"
 "$REPO_ROOT/infra/bootstrap/03-platform.sh"
-TOKEN=$("$CODER" tokens create --lifetime 1h --name "sandcastle-admin-bootstrap-$(date +%s)")
-H=(-H "Coder-Session-Token: $TOKEN" -H 'Content-Type: application/json')
+# The token reaches curl through a 0600 header file, never argv (ps), and is
+# expired on exit.
+TOKEN_NAME="sandcastle-admin-bootstrap-$(date +%s)"
+hdr=$(mktemp)
+chmod 600 "$hdr"
+cleanup() {
+  rm -f "$hdr"
+  "$CODER" tokens remove "$TOKEN_NAME" >/dev/null \
+    || echo "warning: could not revoke coder token $TOKEN_NAME; run: coder tokens remove $TOKEN_NAME" >&2
+}
+trap cleanup EXIT
+TOKEN=$("$CODER" tokens create --lifetime 1h --name "$TOKEN_NAME")
+printf 'Coder-Session-Token: %s\n' "$TOKEN" >"$hdr"
+unset TOKEN
+H=(-H @"$hdr" -H 'Content-Type: application/json')
 curl -fsS "${H[@]}" "$CODER_URL/api/v2/experiments" | grep oauth2 >/dev/null \
   || { echo "coder oauth2 experiment is not enabled" >&2; exit 1; }
 
@@ -73,7 +86,6 @@ fi
 
 step "policies"
 kubectl apply -f "$REPO_ROOT/platform/policy/"
-kubectl -n sandcastle-workspaces delete cnp workspace-dns-allow --ignore-not-found
 
 step "admin postgres + deployment"
 kubectl apply -f "$REPO_ROOT/platform/admin/rbac.yaml"
@@ -81,6 +93,8 @@ sed -e "s#__CODER_URL__#$CODER_URL#" -e "s#__PUBLIC_URL__#$PUBLIC_URL#" "$REPO_R
 kubectl -n "$NS" rollout status statefulset/admin-db --timeout=5m
 kubectl -n "$NS" rollout restart deploy/sandcastle-admin # picks up a re-imported image with the same tag
 kubectl -n "$NS" rollout status deploy/sandcastle-admin --timeout=5m
+# The static DNS allow goes only once the admin renders zone DNS policies.
+kubectl -n sandcastle-workspaces delete cnp workspace-dns-allow --ignore-not-found
 
 step "envoy: config from sandcastle-admin"
 kubectl apply -f "$REPO_ROOT/platform/egress/envoy.yaml"
