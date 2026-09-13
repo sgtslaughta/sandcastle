@@ -52,4 +52,4 @@ Rollback to a pre-phase snapshot: `make vm-snapshots` to list, then
 
 ## Status
 
-Phase 0 (scaffold) — in progress. See the spec for the phase plan.
+Phase 1 (isolation substrate) — complete: k3s + Cilium (kube-proxy replaced), Kata `kata-clh-runtime-rs`, gVisor, verified by `make verify-substrate` in the lab VM. Phase 2 (developer experience baseline) next; see the spec for the phase plan.
