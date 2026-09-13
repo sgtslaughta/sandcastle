@@ -1,7 +1,7 @@
 # Phase 3 — Containment Core — Design Spec
 
 Date: 2026-09-13
-Status: approved (pending spike gates)
+Status: implemented (v0.3.0)
 Parent: [MVP design](2026-09-13-sandcastle-mvp-design.md)
 
 ## Goal
@@ -100,6 +100,8 @@ until enclaves move out of the cluster in Phase 5.
 
 ## Spike (gates the build)
 
+Results: [spike results](2026-09-13-phase3-spike-results.md). All six passed; no fallback taken.
+
 Run in the VM after snapshot `pre-containment`. Throwaway; results logged to
 open-brain and summarised here.
 
@@ -140,6 +142,46 @@ Must be seen:
 
 `make verify-host-egress` runs on the host with sudo: the nft table exists, it
 hooks only input/forward with every rule scoped to the lab bridges, and `sandcastle-deny` log lines appeared during the VM test.
+
+## Implementation findings — 2026-09-13
+
+Found by the verify suite after the spike. Each finding changed the build.
+
+- **Agent download went through the gate.** The workspace image's
+  `HTTP_PROXY` sent the Coder init script's binary download to Envoy, which
+  denied it. The template adds the access URL host to `NO_PROXY`. The spike
+  missed this because it ran image 0.1.0, which has no proxy env: spike with
+  the image that ships.
+- **DNS patterns.** A single `*` matches one label, and search-list expansions
+  reach 7+ labels. The rule is now `**.cluster.local`.
+- **Noise budget.** The Coder agent's embedded Tailscale emits port-mapping
+  probes that no setting disables (Coder 2.36.5; `CODER_BLOCK_DIRECT` and
+  `TS_DISABLE_UPNP` both tried): UDP 5351/1900 to the pod gateway, SSDP to
+  239.255.255.250:1900, and UDP to 203.0.113.1:12345. Owner decision: keep
+  them blocked and classify them as three exact signatures. The verify suite
+  fails on any other drop during allowed work, and Phase 6 alert rules reuse
+  the list.
+- **Legitimate tools that leaked attempts:**
+  - npm audit POSTs to Nexus: `audit=false`.
+  - Docker 29's containerd image store contacted Docker Hub on every pull,
+    even when the mirror served the pull: dind uses the classic store, which
+    falls back to Hub only if the mirror fails. Allowing the DNS name first
+    exposed the hidden connection attempts. Re-measure drops after allowing
+    anything.
+- **Permitting names** (owner requirement: closed networks use other registry
+  hostnames): `platform/policy/workspace-dns-allow.yaml` plus `make policy`.
+  Resolving never grants reaching. The file holds a `.invalid` placeholder,
+  because an empty DNS rule list allows every name.
+- **Envoy log latency.** The file flush defaults to 10 s; set to 1 s so
+  denials are visible within seconds.
+- **Silent drops.** ClusterIP destinations (kube API, coder-db) get no ICMP
+  deny response and time out; Hubble still logs them.
+- **Cilium upgrade deadlock** on a single node (two operator replicas):
+  `operator.replicas=1`, with `maxUnavailable=1` so a rolling update can
+  replace the only pod.
+
+Result: `03-containment.sh` 35/35, plus Phase 1 9/9 and Phase 2 18/18
+regressions, all under the host lock.
 
 ## Decision records
 

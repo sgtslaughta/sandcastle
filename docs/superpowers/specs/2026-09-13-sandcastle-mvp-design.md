@@ -70,7 +70,9 @@ Rules that follow:
 
 - Bootstrap steps that alter networking snapshot the VM first (`pre-cilium`,
   `pre-kata`) and keep the first snapshot of each name across re-runs.
-- `infra/vm/00-host-libvirt.sh` is the only script that modifies the host.
+- Only two scripts modify the host: `infra/vm/00-host-libvirt.sh` and, from
+  Phase 3, `infra/vm/01-host-egress-nft.sh`. The second uses its own nftables
+  table, and its rules match only packets arriving on the lab bridges.
 - Substrate verification runs inside the VM. It compares the Kata pod's kernel
   with the kernel of the machine running the test; from the host, a runc
   fallback pod would report the VM's kernel and pass falsely.
@@ -218,7 +220,7 @@ route attempts, (c) commits that would have reached an enclave via CI.
 0. Scaffold: repo, spec, prerequisites (kubectl/helm/terraform).
 1. Isolation substrate: k3s + Cilium + kata-deploy/CLH + gVisor class.
 2. DX baseline: Coder + `base` template + DinD + Nexus mirror.
-3. Containment core: no-default-route ×2 + Envoy gate + 403 flow.
+3. Containment core: no-default-route ×2 + Envoy gate + 403 flow. — complete (v0.3.0)
 4. Admin control plane: zones, request/approve, xDS, Cilium reconciler, UI.
 5. Brokers + enclaves + inference: data-broker, cred-broker, Ollama ceilings.
 6. Detection + response: Falco, honeytokens, Loki/Grafana, ratelimit, breaker.
