@@ -162,3 +162,52 @@ func TestTamperedSessionAndOpenRedirect(t *testing.T) {
 		t.Fatalf("open redirect not neutralized: %+v", f)
 	}
 }
+
+func TestCookieConfusionAndEmptyCSRF(t *testing.T) {
+	coder := fakeCoder(t, `{"name":"owner"}`)
+	defer coder.Close()
+	a := newAuth(t, coder)
+	rec := httptest.NewRecorder()
+	a.Login(rec, httptest.NewRequest("GET", "/login", nil))
+	var swapped []*http.Cookie
+	for _, c := range cookies(rec) {
+		if c.Name == flowCookie {
+			swapped = append(swapped, &http.Cookie{Name: sessionCookie, Value: c.Value})
+		}
+	}
+	if len(swapped) != 1 {
+		t.Fatal("no flow cookie")
+	}
+	if _, ok := a.User(withCookies(httptest.NewRequest("GET", "/", nil), swapped)); ok {
+		t.Fatal("flow cookie accepted as session")
+	}
+	rec = httptest.NewRecorder()
+	a.setSigned(rec, sessionCookie, User{ID: "u1", Name: "alice", Exp: time.Now().Add(time.Hour).Unix()}, time.Hour)
+	if _, ok := a.User(withCookies(httptest.NewRequest("GET", "/", nil), cookies(rec))); ok {
+		t.Fatal("session with empty CSRF accepted")
+	}
+}
+
+func TestLoginNext(t *testing.T) {
+	coder := httptest.NewServer(http.NotFoundHandler())
+	defer coder.Close()
+	a := newAuth(t, coder)
+	for next, want := range map[string]string{
+		"/%09/evil.com":                 "/",
+		"/\t/evil.com":                  "/",
+		"//evil.com":                    "/",
+		"/\\evil.com":                   "/",
+		"https://evil.com":              "/",
+		"evil.com":                      "/",
+		"/ok\x7f":                       "/",
+		"/queue":                        "/queue",
+		"/r?src=1.2.3.4&host=a.com:443": "/r?src=1.2.3.4&host=a.com:443",
+	} {
+		rec := httptest.NewRecorder()
+		a.Login(rec, httptest.NewRequest("GET", "/login?next="+url.QueryEscape(next), nil))
+		var f flow
+		if !a.getSigned(withCookies(httptest.NewRequest("GET", "/", nil), cookies(rec)), flowCookie, &f) || f.Next != want {
+			t.Errorf("next %q -> %q, want %q", next, f.Next, want)
+		}
+	}
+}

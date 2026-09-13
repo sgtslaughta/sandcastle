@@ -75,12 +75,22 @@ func New(c Config) (*Auth, error) {
 
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	next := r.URL.Query().Get("next")
-	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.HasPrefix(next, "/\\") {
+	if !localPath(next) {
 		next = "/"
 	}
 	f := flow{State: random(), Verifier: oauth2.GenerateVerifier(), Next: next, Exp: time.Now().Add(10 * time.Minute).Unix()}
 	a.setSigned(w, flowCookie, f, 10*time.Minute)
 	http.Redirect(w, r, a.oauth.AuthCodeURL(f.State, oauth2.S256ChallengeOption(f.Verifier)), http.StatusFound)
+}
+
+// localPath reports whether next is a same-origin path safe to redirect to.
+// Browsers strip tabs and treat a backslash as "/", so both are refused.
+func localPath(next string) bool {
+	u, err := url.Parse(next)
+	if err != nil || u.Scheme != "" || u.Host != "" || !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") {
+		return false
+	}
+	return !strings.ContainsFunc(next+u.Path, func(r rune) bool { return r < 0x20 || r == 0x7f || r == '\\' })
 }
 
 func (a *Auth) Callback(w http.ResponseWriter, r *http.Request) {
@@ -161,7 +171,7 @@ func (a *Auth) User(r *http.Request) (User, bool) {
 		return User{}, false
 	}
 	var u User
-	if !a.getSigned(r, sessionCookie, &u) || u.Exp < time.Now().Unix() {
+	if !a.getSigned(r, sessionCookie, &u) || u.Exp < time.Now().Unix() || u.ID == "" || u.CSRF == "" {
 		return User{}, false
 	}
 	return u, true
@@ -197,7 +207,7 @@ func (a *Auth) Require(admin bool, h func(http.ResponseWriter, *http.Request, Us
 // NodePort. Set Secure once the UI sits behind TLS.
 func (a *Auth) setSigned(w http.ResponseWriter, name string, v any, ttl time.Duration) {
 	payload, _ := json.Marshal(v)
-	value := b64(payload) + "." + b64(a.mac(b64(payload)))
+	value := b64(payload) + "." + b64(a.mac(name+"|"+b64(payload)))
 	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/", HttpOnly: true,
 		SameSite: http.SameSiteLaxMode, MaxAge: int(ttl.Seconds())})
 }
@@ -208,7 +218,7 @@ func (a *Auth) getSigned(r *http.Request, name string, v any) bool {
 		return false
 	}
 	payload, sig, ok := strings.Cut(c.Value, ".")
-	if !ok || !hmac.Equal([]byte(sig), []byte(b64(a.mac(payload)))) {
+	if !ok || !hmac.Equal([]byte(sig), []byte(b64(a.mac(name+"|"+payload)))) {
 		return false
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(payload)
