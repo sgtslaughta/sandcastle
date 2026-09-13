@@ -34,6 +34,16 @@ team).
 
 Any packet from a workspace toward an enclave CIDR is a page, never a log line.
 
+**Revised 2026-09-13 (Phase 3 design):** four destinations, not three — the
+Coder agent must dial coderd for its tunnel, so coderd is reachable on agent
+API paths only (Cilium L7). Cilium silently drops denied packets by default;
+`EHOSTUNREACH` holds only with its experimental ICMP deny response, verified
+in the Phase 3 spike. Host nftables alone cannot tell workspace traffic from
+platform traffic because Cilium masquerades to the VM IP; the second layer is a
+Cilium egress gateway (dedicated egress IP for Envoy/Nexus) plus host nftables
+dropping everything else. See
+[Phase 3 spec](2026-09-13-phase3-containment-core-design.md).
+
 ## Architecture
 
 Single KVM virtual machine on the developer's host, running k3s (flannel +
@@ -105,7 +115,7 @@ Consequences for this design:
 | Coder OSS | Workspace lifecycle, templates, tunnel-only access (no inbound ports per workspace) |
 | Nexus | Single mirror for apt/PyPI/npm/OCI; collapses allowlist to one hostname; stands in for the airlock ingest path |
 | sandcastle-admin | Go + htmx + Postgres. Zone registry, per-workspace egress policy, request/approve queue, audit log. Pushes Envoy xDS (go-control-plane) and reconciles CiliumNetworkPolicy CRDs |
-| Envoy egress gate | DaemonSet :3128. TLS-inspector reads SNI, matches per-workspace allowlist from xDS; deny → 403 page with denied hostname + prefilled request link. Per-workspace identity from source IP → Cilium identity. Rate limits via ratelimit service + Redis |
+| Envoy egress gate | Deployment :3128 (DaemonSet once multi-node). TLS-inspector reads SNI, matches per-workspace allowlist from xDS; deny → 403 page with denied hostname + prefilled request link. Per-workspace identity from source IP → Cilium identity. Rate limits via ratelimit service + Redis |
 | Gitea | Internal SCM (air-gap stand-in for enterprise git) |
 | Ollama | Mock inference cluster behind the same Envoy gate; per-workspace tokens, daily ceilings |
 | cred-broker | Exchanges workspace Coder identity for 10-minute Gitea token scoped to template-declared repos; git credential helper in image calls it. No secrets in image or env |
@@ -146,6 +156,10 @@ Consequences for this design:
 
 Postgres each, zero route from workspaces, reachable only via data-broker.
 Two of them to prove the zone→enclave grant model scales past one.
+
+**Revised 2026-09-13:** enclaves run outside the cluster on a separate
+host-guarded libvirt network (Phase 5), so workspace→enclave is enforced by
+Cilium and host nftables independently, matching production topology.
 
 ## Zone model
 
