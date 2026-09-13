@@ -84,3 +84,16 @@ verify-containment: ## workspace reaches only its four destinations, denials are
 
 verify-host-egress: ## host: nft table shape and sandcastle-deny log lines (sudo)
 	@sudo infra/vm/01-host-egress-nft.sh verify
+
+# Go runs in a container: the host and VM have no toolchain. Runs as the
+# caller's uid so go.sum and build output stay user-owned.
+GOCACHE_DIR := $(HOME)/.cache/sandcastle-go
+GO_RUN = mkdir -p $(GOCACHE_DIR) && docker run --rm -u $$(id -u):$$(id -g) \
+	-e HOME=/tmp -e GOCACHE=/cache/build -e GOMODCACHE=/cache/mod \
+	-v $(GOCACHE_DIR):/cache -v $(CURDIR)/admin:/src -w /src $(GO_DOCKER_ARGS) golang:1.27
+
+admin-go:   ## run a go command for sandcastle-admin, e.g. make admin-go ARGS='mod tidy'
+	$(GO_RUN) go $(ARGS)
+
+admin-test: ## sandcastle-admin unit tests (docker)
+	$(GO_RUN) go test ./...
