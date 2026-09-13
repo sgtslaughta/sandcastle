@@ -36,8 +36,40 @@ Any packet from a workspace toward an enclave CIDR is a page, never a log line.
 
 ## Architecture
 
-Single host, k3s (flannel + kube-proxy disabled), Cilium CNI, kata-deploy with
-Cloud Hypervisor (`runtimeClassName: kata-clh`).
+Single KVM virtual machine on the developer's host, running k3s (flannel +
+kube-proxy disabled), Cilium CNI, kata-deploy with Cloud Hypervisor
+(`runtimeClassName: kata-clh`).
+
+### Lab host boundary — added 2026-09-13
+
+The first bootstrap ran directly on a workstation. Cilium's kube-proxy
+replacement attaches eBPF at the node's NIC, and when its agent failed to come
+up after the datapath was already in place, the host kept its IP and link but
+answered nothing, re-blackholing itself on every reboot until k3s was disabled.
+
+The lab therefore runs in a libvirt VM (Ubuntu 26.04, 10 vCPU, 20 GB fixed, no
+balloon) on libvirt's NAT network. Every cluster-side failure mode — eBPF,
+iptables, CNI config, routes — lives in the guest kernel, so the worst case is
+an unreachable VM recovered through its serial console or a snapshot revert.
+The host NIC is never bridged into the guest; a bridge would re-couple host
+networking to the cluster's.
+
+Rules that follow:
+
+- Bootstrap steps that alter networking snapshot the VM first (`pre-cilium`,
+  `pre-kata`) and keep the first snapshot of each name across re-runs.
+- `infra/vm/00-host-libvirt.sh` is the only script that modifies the host.
+- Substrate verification runs inside the VM. It compares the Kata pod's kernel
+  with the kernel of the machine running the test; from the host, a runc
+  fallback pod would report the VM's kernel and pass falsely.
+
+Side effect worth keeping: host nftables on the libvirt network sit outside the
+cluster's kernel entirely, making them a faithful stand-in for the production
+"second enforcement layer owned by a different team".
+
+Cost: Kata guests are now nested (L2) under the lab VM, so workspace boot and
+memory overhead are higher than production bare metal. Production parity is
+preserved with cloud instances that use nested virtualization.
 
 ### Second isolation layer — revised 2026-09-13
 
@@ -165,7 +197,13 @@ Each phase ends with a scripted verify step under `infra/tests/`.
 ## Risks
 
 - Kata+Cilium+k3s interplay — proven first in Phase 1 before anything stacks.
-- Single-box resources (30GB/16c) — small Ollama model, warm pool of 1.
+  Root cause of the first Cilium agent failure is still undiagnosed; it is
+  reproduced inside the VM, where failure costs a snapshot revert.
+- Lab VM capped at 10 vCPU / 20 GB so the host keeps headroom — small Ollama
+  model, warm pool of 1.
+- Ubuntu 26.04 guest has less upstream test coverage with Kata 4.1 and Cilium
+  1.20 than 24.04. If substrate issues trace to the guest OS, rebuild the VM
+  on 24.04 rather than debugging the kernel.
 - Selkies perf under software render — acceptable to document as slow.
 - xDS integration — use envoyproxy/go-control-plane, never hand-rolled.
 

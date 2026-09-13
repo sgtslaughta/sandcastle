@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Phase 0: install the host tools Sandcastle's bootstrap needs.
-# Needs sudo. Installs nothing that is already present. Does not start k3s —
-# that is 01-k3s-cilium.sh, so this stays safe to re-run.
+# Phase 0: install the tools Sandcastle's bootstrap needs.
+# Runs inside the VM. Needs sudo. Installs nothing that is already present.
+# Does not start k3s — that is 01-k3s-cilium.sh, so this stays safe to re-run.
 set -euo pipefail
 
 KUBECTL_VERSION="${KUBECTL_VERSION:-v1.31.4}"
@@ -36,4 +36,4 @@ fi
 # k3s installs kata and Cilium later; the installer script itself is pulled in
 # 01-k3s-cilium.sh so the version pin lives next to the cluster config.
 step "done"
-"$(dirname "$0")/../tests/00-host-preflight.sh"
+"$(dirname "$0")/../tests/00-node-preflight.sh"
