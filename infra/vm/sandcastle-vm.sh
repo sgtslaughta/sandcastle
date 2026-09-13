@@ -14,6 +14,8 @@ SUMS_URL="${SUMS_URL:-https://cloud-images.ubuntu.com/releases/26.04/release/SHA
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_gen_key.pub}"
 SSH_KEY="${SSH_PUBKEY%.pub}"
 VM_USER="${VM_USER:-dev}"
+EGRESS_NET="${EGRESS_NET:-sandcastle-egress}"
+EGRESS_MAC="${EGRESS_MAC:-52:54:00:5c:00:02}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -243,6 +245,18 @@ cmd_destroy() {
   rm -f "$IMG_DIR/$VM_NAME-seed.iso"
 }
 
+cmd_egress_net() {
+  # Idempotent. The fixed MAC lets netplan in the VM name the NIC egress0.
+  v net-info "$EGRESS_NET" >/dev/null 2>&1 || v net-define "$REPO_ROOT/infra/vm/egress-net.xml"
+  v net-info "$EGRESS_NET" | grep -q '^Active:.*yes' || v net-start "$EGRESS_NET"
+  v net-autostart "$EGRESS_NET"
+  if v domiflist "$VM_NAME" | grep -qi "$EGRESS_MAC"; then
+    echo "egress NIC already attached"
+  else
+    v attach-interface "$VM_NAME" network "$EGRESS_NET" --model virtio --mac "$EGRESS_MAC" --live --config
+  fi
+}
+
 usage() {
   cat <<EOF
 usage: $(basename "$0") <command> [args]
@@ -259,6 +273,7 @@ commands:
   kubeconfig          copy the VM's kubeconfig to the host
   console             attach to the VM's serial console
   destroy             undefine the VM and its storage (not base.img)
+  egress-net          define the egress network and attach the VM's second NIC
 EOF
 }
 
@@ -277,6 +292,7 @@ main() {
     kubeconfig) cmd_kubeconfig "$@" ;;
     console)    cmd_console "$@" ;;
     destroy)    cmd_destroy "$@" ;;
+    egress-net) cmd_egress_net "$@" ;;
     *)          usage; exit 2 ;;
   esac
 }

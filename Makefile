@@ -1,4 +1,4 @@
-.PHONY: preflight vm-host vm vm-ssh vm-console vm-snapshots vm-revert vm-destroy cluster kata verify-substrate platform image template verify-dx
+.PHONY: preflight vm-host vm vm-ssh vm-console vm-snapshots vm-revert vm-destroy cluster kata verify-substrate platform image template verify-dx vm-egress-net containment egress-lock egress-unlock verify-containment verify-host-egress
 
 VM := infra/vm/sandcastle-vm.sh
 
@@ -59,3 +59,25 @@ template:   ## push the base Coder template
 
 verify-dx:  ## workspace works through the mirror; admission refuses non-kata pods
 	@$(VM) run infra/tests/02-dx-baseline.sh
+
+# Phase 3
+vm-egress-net: ## one-time: libvirt egress network + second VM NIC
+	@$(VM) egress-net
+
+containment: ## cilium egress gateway, envoy gate, network policies (run egress-unlock first)
+	@$(VM) snapshot pre-containment
+	@$(VM) run infra/bootstrap/04-containment.sh
+
+# The lock is not persistent: a host reboot leaves the lab unlocked, and
+# verify-containment fails until egress-lock runs again.
+egress-lock:   ## host: drop lab VM traffic except the egress network (sudo)
+	@ip=$$($(VM) ip) && sudo infra/vm/01-host-egress-nft.sh lock "$$ip"
+
+egress-unlock: ## host: remove the lock for bootstrap steps (sudo)
+	@sudo infra/vm/01-host-egress-nft.sh unlock
+
+verify-containment: ## workspace reaches only its four destinations, denials are visible
+	@$(VM) run infra/tests/03-containment.sh
+
+verify-host-egress: ## host: nft table shape and sandcastle-deny log lines (sudo)
+	@sudo infra/vm/01-host-egress-nft.sh verify
