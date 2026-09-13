@@ -5,6 +5,7 @@ package policy
 import (
 	"regexp"
 	"sort"
+	"strings"
 )
 
 // Rule is one allowlist entry: a proxy host (Envoy) or a resolvable DNS name
@@ -76,7 +77,11 @@ func (in Input) Effective(ws, kind string) []Rule {
 }
 
 // HostIPs inverts host rules: each host:port maps to the sorted, unique pod
-// IPs allowed to reach it. Hosts nobody may reach are absent.
+// IPs allowed to reach it. Hosts nobody may reach are absent. Envoy routes a
+// request to the most specific matching domain only, so every "*.suffix"
+// key's IPs are also merged into each more specific key on the same port it
+// covers (exact hosts and longer wildcards); otherwise a one-workspace grant
+// for api.github.com would lock everyone else out of a *.github.com zone.
 func HostIPs(in Input) map[HostKey][]string {
 	set := map[HostKey]map[string]bool{}
 	for _, p := range in.Pods {
@@ -89,6 +94,19 @@ func HostIPs(in Input) map[HostKey][]string {
 				set[k] = map[string]bool{}
 			}
 			set[k][p.IP] = true
+		}
+	}
+	for wk, wips := range set {
+		suffix, ok := strings.CutPrefix(wk.Host, "*")
+		if !ok {
+			continue
+		}
+		for k, ips := range set {
+			if k != wk && k.Port == wk.Port && strings.HasSuffix(k.Host, suffix) {
+				for ip := range wips {
+					ips[ip] = true
+				}
+			}
 		}
 	}
 	out := make(map[HostKey][]string, len(set))

@@ -143,3 +143,30 @@ func TestDenyBodyCarriesRequestLink(t *testing.T) {
 		}
 	}
 }
+
+// Envoy picks the exact vhost over the wildcard one, so the exact vhost must
+// also admit everyone the wildcard zone admits.
+func TestExactVhostKeepsWildcardIPs(t *testing.T) {
+	hosts := policy.HostIPs(policy.Input{
+		DefaultZone: "z",
+		ZoneRules:   map[string][]policy.Rule{"z": {{Kind: "host", Value: "*.github.com", Port: 443}}},
+		Grants:      map[string][]policy.Rule{"ws-a": {{Kind: "host", Value: "api.github.com", Port: 443}}},
+		Pods:        []policy.Workspace{{ID: "ws-a", IP: "10.42.0.1"}, {ID: "ws-b", IP: "10.42.0.2"}},
+	})
+	res, err := Build(params(hosts))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, vh := range res[resource.RouteType][0].(*routev3.RouteConfiguration).GetVirtualHosts() {
+		if len(vh.GetDomains()) == 1 && vh.GetDomains()[0] == "api.github.com:443" {
+			b, _ := protojson.Marshal(vh)
+			for _, ip := range []string{"10.42.0.1", "10.42.0.2"} {
+				if !strings.Contains(string(b), `"addressPrefix":"`+ip+`"`) {
+					t.Errorf("exact vhost RBAC missing %s: %s", ip, b)
+				}
+			}
+			return
+		}
+	}
+	t.Fatal("no api.github.com:443 vhost")
+}
