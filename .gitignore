@@ -224,3 +224,4 @@ kubeconfig
 *.tfstate.backup
 .terraform/
 bin/
+.claude/worktrees/
