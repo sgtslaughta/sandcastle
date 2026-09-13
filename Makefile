@@ -1,4 +1,4 @@
-.PHONY: preflight vm-host vm vm-ssh vm-console vm-snapshots vm-revert vm-destroy cluster kata verify-substrate platform image template verify-dx vm-egress-net containment egress-lock egress-unlock verify-containment verify-host-egress policy
+.PHONY: preflight vm-host vm vm-ssh vm-console vm-snapshots vm-revert vm-destroy cluster kata verify-substrate platform image template verify-dx vm-egress-net containment egress-lock egress-unlock verify-containment verify-host-egress policy admin-go admin-test admin-smoke admin-image admin verify-admin
 
 VM := infra/vm/sandcastle-vm.sh
 
