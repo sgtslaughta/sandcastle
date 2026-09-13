@@ -95,5 +95,11 @@ GO_RUN = mkdir -p $(GOCACHE_DIR) && docker run --rm -u $$(id -u):$$(id -g) \
 admin-go:   ## run a go command for sandcastle-admin, e.g. make admin-go ARGS='mod tidy'
 	$(GO_RUN) go $(ARGS)
 
-admin-test: ## sandcastle-admin unit tests (docker)
-	$(GO_RUN) go test ./...
+admin-test: ## sandcastle-admin tests with a throwaway postgres (docker)
+	@docker network create sc-admin-test >/dev/null 2>&1 || true
+	@docker rm -f sc-admin-testdb >/dev/null 2>&1 || true
+	@docker run -d --name sc-admin-testdb --network sc-admin-test -e POSTGRES_PASSWORD=test postgres:17.6 >/dev/null
+	@$(GO_RUN) go test -p 1 ./...; s=$$?; docker rm -f sc-admin-testdb >/dev/null; exit $$s
+
+# -p 1: store and web tests share one Postgres server and its roles.
+admin-test: GO_DOCKER_ARGS = --network sc-admin-test -e ADMIN_TEST_DSN=postgres://postgres:test@sc-admin-testdb:5432/postgres?sslmode=disable
