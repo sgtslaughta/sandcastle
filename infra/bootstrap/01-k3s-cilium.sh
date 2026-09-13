@@ -59,6 +59,11 @@ helm upgrade --install cilium cilium/cilium --version "$CILIUM_VERSION" \
   --set ipam.operator.clusterPoolIPv4PodCIDRList=10.42.0.0/16 \
   --set cni.exclusive=false \
   --set socketLB.hostNamespaceOnly=true \
+  --set bpf.masquerade=true \
+  --set egressGateway.enabled=true \
+  --set policyDenyResponse=icmp \
+  --set operator.replicas=1 \
+  --set operator.updateStrategy.rollingUpdate.maxUnavailable=1 \
   --set hubble.enabled=true \
   --set hubble.relay.enabled=true \
   --set hubble.ui.enabled=true \
@@ -73,6 +78,21 @@ helm upgrade --install cilium cilium/cilium --version "$CILIUM_VERSION" \
 # kernel behind a second netns, so socket LB must be confined to the host
 # namespace or in-VM service traffic breaks in ways that look like random
 # connection failures. Upstream documents this under network/kubernetes/kata.
+#
+# Phase 3 containment: egressGateway needs bpf.masquerade and kube-proxy
+# replacement. It gives Envoy, Nexus and coderd a dedicated egress IP, so host
+# nftables can drop everything else the VM sends. policyDenyResponse=icmp
+# (experimental) turns a silent policy drop into an immediate "unreachable"
+# for the workspace; a bypass then fails fast instead of hanging.
+#
+# One operator on one node. The chart default of two replicas left one pod
+# Pending forever (hostNetwork port clash), and its rolling update never took
+# the old pod down: enabling egressGateway then deadlocked, with the new agent
+# waiting for a CRD only the new, unschedulable operator registers.
+
+# Agents read cilium-config only at start; a changed value needs a restart.
+kubectl -n kube-system rollout restart ds/cilium deploy/cilium-operator
+kubectl -n kube-system rollout status ds/cilium --timeout=5m
 
 step "waiting for node Ready"
 kubectl wait --for=condition=Ready node --all --timeout=5m
