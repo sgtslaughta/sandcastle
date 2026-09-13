@@ -202,7 +202,7 @@ resource "kubernetes_deployment_v1" "main" {
 
         container {
           name              = "dev"
-          image             = "sandcastle/base:0.1.0"
+          image             = "sandcastle/base:0.2.0"
           image_pull_policy = "Never" # no registry yet; image is imported straight into k3s containerd
           command           = ["sh", "-c", coder_agent.main.init_script]
           security_context {
@@ -235,7 +235,7 @@ resource "kubernetes_deployment_v1" "main" {
 
         container {
           name              = "dind"
-          image             = "sandcastle/dind:0.1.0" # images/dind: loop-mounted ext4 for /var/lib/docker
+          image             = "sandcastle/dind:0.2.0" # images/dind: loop-mounted ext4 for /var/lib/docker
           image_pull_policy = "Never"
           security_context {
             # Applies inside the Kata guest only: kata-deploy configures the
@@ -249,7 +249,15 @@ resource "kubernetes_deployment_v1" "main" {
           # the API (root in this guest) on every pod network interface; args
           # starting with "dockerd" are passed through without defaults.
           # --group=1000 lets the coder user use the socket without sudo.
-          args = ["dockerd", "--host=unix:///run/dind/docker.sock", "--group=1000"]
+          # Image pulls go to the Nexus docker-hub proxy: with Phase 3 egress
+          # policy, Docker Hub itself is unreachable from the workspace.
+          args = [
+            "dockerd",
+            "--host=unix:///run/dind/docker.sock",
+            "--group=1000",
+            "--registry-mirror=http://nexus.sandcastle-mirror.svc.cluster.local:8082",
+            "--insecure-registry=nexus.sandcastle-mirror.svc.cluster.local:8082",
+          ]
           env {
             name  = "DOCKER_TLS_CERTDIR"
             value = ""

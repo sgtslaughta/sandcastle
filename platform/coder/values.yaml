@@ -24,6 +24,11 @@ coder:
       value: "__CODER_ACCESS_URL__"
     - name: CODER_TELEMETRY_ENABLE
       value: "false"
+    # DERP relay only. Direct tailnet paths would make every workspace try
+    # STUN/UDP to the outside; with egress denied those attempts are noise
+    # that trains people to ignore drop alerts.
+    - name: CODER_BLOCK_DIRECT
+      value: "true"
 
   resources:
     requests:

@@ -48,7 +48,17 @@ RUN echo "coder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/coder \
 # makes that the only reachable path anyway.
 COPY mirror/ /
 
-ENV DOCKER_HOST=unix:///run/dind/docker.sock
+# Everything external goes through the egress gate; in-cluster names (Nexus,
+# coderd) go direct. Lowercase variants too: curl reads only http_proxy for
+# plain HTTP, and tools disagree on which case they honor. A tool that ignores
+# these gets no route at all (platform/policy/workspaces.yaml).
+ENV DOCKER_HOST=unix:///run/dind/docker.sock \
+    HTTP_PROXY=http://egress.sandcastle-egress.svc.cluster.local:3128 \
+    HTTPS_PROXY=http://egress.sandcastle-egress.svc.cluster.local:3128 \
+    NO_PROXY=.cluster.local,localhost,127.0.0.1 \
+    http_proxy=http://egress.sandcastle-egress.svc.cluster.local:3128 \
+    https_proxy=http://egress.sandcastle-egress.svc.cluster.local:3128 \
+    no_proxy=.cluster.local,localhost,127.0.0.1
 
 USER coder
 WORKDIR /home/coder
