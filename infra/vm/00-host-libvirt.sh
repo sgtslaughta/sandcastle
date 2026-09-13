@@ -13,7 +13,7 @@ sudo apt-get install -y qemu-system-x86 qemu-utils libvirt-daemon-system virtins
 
 step "adding $USER to libvirt and kvm groups"
 sudo usermod -aG libvirt,kvm "$USER"
-echo "group membership changed — log out and back in (or run: newgrp libvirt) before using virsh/virt-install as $USER"
+echo "group membership changed — log out and back in before using virsh/virt-install as $USER (or prefix commands with: sudo -u \"$USER\")"
 
 step "starting libvirt default NAT network"
 sudo virsh -c qemu:///system net-start default || true
