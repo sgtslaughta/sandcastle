@@ -1,7 +1,7 @@
 # Phase 4 — Admin Control Plane — Design Spec
 
 Date: 2026-09-13
-Status: approved (design); spikes pending
+Status: approved (design); spikes passed — see [results](2026-09-13-phase4-spike-results.md)
 Parent: [MVP design](2026-09-13-sandcastle-mvp-design.md) · Builds on: [Phase 3](2026-09-13-phase3-containment-core-design.md)
 
 ## Goal
