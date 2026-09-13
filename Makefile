@@ -1,4 +1,4 @@
-.PHONY: preflight vm-host vm vm-ssh vm-console vm-snapshots vm-revert vm-destroy cluster kata verify-substrate platform image template verify-dx vm-egress-net containment egress-lock egress-unlock verify-containment verify-host-egress
+.PHONY: preflight vm-host vm vm-ssh vm-console vm-snapshots vm-revert vm-destroy cluster kata verify-substrate platform image template verify-dx vm-egress-net containment egress-lock egress-unlock verify-containment verify-host-egress policy
 
 VM := infra/vm/sandcastle-vm.sh
 
@@ -75,6 +75,9 @@ egress-lock:   ## host: drop lab VM traffic except the egress network (sudo)
 
 egress-unlock: ## host: remove the lock for bootstrap steps (sudo)
 	@sudo infra/vm/01-host-egress-nft.sh unlock
+
+policy:     ## re-apply network policies, e.g. after editing platform/policy/workspace-dns-allow.yaml
+	@$(VM) run 'kubectl apply -f platform/policy/'
 
 verify-containment: ## workspace reaches only its four destinations, denials are visible
 	@$(VM) run infra/tests/03-containment.sh

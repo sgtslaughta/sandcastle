@@ -27,10 +27,12 @@ spec:
             - {port: "53", protocol: TCP}
           rules:
             dns:
-              - matchPattern: "*.cluster.local"
-              - matchPattern: "*.*.cluster.local"
-              - matchPattern: "*.*.*.cluster.local"
-              - matchPattern: "*.*.*.*.cluster.local"
+              # "**." spans any number of labels (Cilium >= 1.19). A single
+              # "*" does not, and the resolver's search list expands names
+              # like egress.sandcastle-egress.svc.cluster.local to 7+ labels;
+              # refusing those made every lookup a policy drop, burying real
+              # alerts in noise.
+              - matchPattern: "**.cluster.local"
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: sandcastle-egress
