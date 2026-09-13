@@ -31,12 +31,12 @@ trap cleanup EXIT
 # coder ssh joins arguments into one remote command; pass one string.
 wsh()  { "$CODER" ssh "$WS" -- "$1" >/tmp/ct-cmd.log 2>&1; }
 wout() { "$CODER" ssh "$WS" -- "$1" 2>/dev/null; }
-# blocked NAME CMD: CMD must fail, and fail fast (+3s coder ssh overhead).
+# blocked NAME CMD [MAX_MS]: CMD must fail, within MAX_MS (+3s coder ssh overhead).
 blocked() {
-  local s rc ms
+  local s rc ms max=${3:-$FAST_MS}
   s=$(date +%s%N); wsh "$2"; rc=$?; ms=$(( ($(date +%s%N) - s) / 1000000 ))
   if (( rc == 0 )); then bad "$1 succeeded"; tail -3 /tmp/ct-cmd.log
-  elif (( ms > FAST_MS + 3000 )); then bad "$1 blocked but slow (${ms}ms)"
+  elif (( ms > max + 3000 )); then bad "$1 blocked but slow (${ms}ms)"
   else pass "$1 blocked (${ms}ms)"; fi
 }
 
@@ -95,7 +95,9 @@ curl -fsS -m 5 -o /dev/null "http://$peer_ip:8000/" \
 
 # --- blocked -----------------------------------------------------------------
 blocked "direct egress to 1.1.1.1 ignoring proxy" "curl --noproxy '*' -s -m 20 -o /dev/null http://1.1.1.1"
-blocked "kube API 10.43.0.1:443" "curl --noproxy '*' -sk -m 20 -o /dev/null https://10.43.0.1/"
+# Service-translated destinations get no ICMP deny response (spike S3): the
+# drop is silent, so this one waits for curl's own timeout.
+blocked "kube API 10.43.0.1:443" "curl --noproxy '*' -sk -m 10 -o /dev/null https://10.43.0.1/" 12000
 blocked "kubelet $NODE_IP:10250" "curl --noproxy '*' -sk -m 20 -o /dev/null https://$NODE_IP:10250/"
 blocked "other workspace pod $peer_ip:8000" "curl --noproxy '*' -s -m 20 -o /dev/null http://$peer_ip:8000/"
 blocked "coder Postgres coder-db:5432" "timeout 20 bash -c '</dev/tcp/coder-db.coder.svc.cluster.local/5432'"

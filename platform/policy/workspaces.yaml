@@ -10,13 +10,10 @@ metadata:
 spec:
   endpointSelector: {}
   # Default-deny ingress: nothing dials into a workspace; the Coder tunnel is
-  # outbound from the agent.
+  # outbound from the agent. Cilium's ICMP deny response still reaches the
+  # pod under this rule (spike S3), so denied egress fails in ~150ms.
   ingress:
     - {}
-  # S3 icmp-needs-ingress-rule form:
-  # ingress:
-  #   - icmps:
-  #       - fields: [{type: 3, family: IPv4}]
   egress:
     # DNS for in-cluster names only. External names are resolved by Envoy,
     # never by the workspace, which closes DNS-query exfil.
@@ -57,8 +54,12 @@ spec:
             http:
               - {method: GET, path: "/v2/.*"}
               - {method: HEAD, path: "/v2/.*"}
-    # coderd: Coder agent API paths only, captured from real agent traffic in
-    # spike S5. Everything else on this port (login, users, templates) is 403.
+    # coderd: the exact requests a Coder 2.36.5 agent made during spike S5
+    # (startup binary fetch, drpc session, reinit watch, DERP relay), captured
+    # from Hubble L7 flows of two live workspaces. The agent dials the
+    # NodePort access URL, but Cilium translates it before policy, so the peer
+    # is the coder pod on 8080. Anything else on this port, including login,
+    # users and templates, gets a 403. Re-capture after a Coder upgrade.
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: coder
@@ -68,12 +69,6 @@ spec:
           rules:
             http:
               - {method: GET, path: "/bin/coder-linux-amd64"}
-              - {method: GET, path: "/api/v2/buildinfo"}
-              - {path: "/api/v2/workspaceagents/me/.*"}
-              - {path: "/derp.*"}
-    # S5 host-30080 form (agent uses the NodePort access URL):
-    # - toEntities: [host]
-    #   toPorts:
-    #     - ports: [{port: "30080", protocol: TCP}]
-    #       rules:
-    #         http: <same S5 list>
+              - {method: GET, path: "/api/v2/workspaceagents/me/.*"}
+              - {method: GET, path: "/derp"}
+              - {method: GET, path: "/derp/latency-check"}
