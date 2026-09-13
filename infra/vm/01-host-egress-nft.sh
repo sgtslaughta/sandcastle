@@ -62,12 +62,15 @@ verify() {
   hooks=$(nft list table inet "$TABLE" | awk '/hook/ {print $4}' | sort -u | tr '\n' ' ')
   [[ "$hooks" == "forward input " ]] && echo "  ok    hooks: $hooks" || { echo "  FAIL  unexpected hooks: $hooks"; fail=1; }
   # Every rule line (not table/chain/type/brace) must match a lab bridge.
-  if nft list table inet "$TABLE" | grep -vE '^\s*(table|chain|type|\}|$)' | grep -vq iifname; then
+  # Never grep -q in these pipelines: under pipefail, grep -q exits at its
+  # first match, the writer dies of SIGPIPE, and the pipeline reports failure,
+  # which here would turn a found violation into "ok".
+  if nft list table inet "$TABLE" | grep -vE '^\s*(table|chain|type|\}|$)' | grep -v iifname >/dev/null; then
     echo "  FAIL  a rule does not match on a lab bridge"; fail=1
   else
     echo "  ok    every rule is scoped to $LAB_BR/$EGRESS_BR"
   fi
-  journalctl -k --since "-30 min" --no-pager | grep -q 'sandcastle-deny' \
+  journalctl -k --since "-30 min" --no-pager | grep 'sandcastle-deny' >/dev/null \
     && echo "  ok    sandcastle-deny log lines in the last 30 min" \
     || { echo "  FAIL  no sandcastle-deny log lines in the last 30 min (run make verify-containment first)"; fail=1; }
   exit "$fail"
