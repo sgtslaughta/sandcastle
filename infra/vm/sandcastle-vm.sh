@@ -34,6 +34,12 @@ vm_ip() {
 }
 
 cmd_create() {
+  # Group membership from make vm-host applies only to new login sessions;
+  # check the libvirt socket before any download or disk work.
+  v version >/dev/null 2>&1 || {
+    echo "cannot reach qemu:///system — run 'newgrp libvirt' or log out and back in after make vm-host" >&2
+    exit 1
+  }
   if v dominfo "$VM_NAME" >/dev/null 2>&1; then
     echo "domain $VM_NAME already exists" >&2
     exit 1
