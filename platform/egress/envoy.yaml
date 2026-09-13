@@ -161,13 +161,16 @@ spec:
     metadata:
       labels: {app: envoy-egress}
       annotations:
-        sandcastle.io/config-rev: "1" # bump to roll pods after a ConfigMap change
+        sandcastle.io/config-rev: "2" # bump to roll pods after a ConfigMap change
     spec:
       automountServiceAccountToken: false
       containers:
         - name: envoy
           image: envoyproxy/envoy:v1.39.1
-          args: ["-c", "/etc/envoy/envoy.yaml", "--log-level", "warn"]
+          # Access logs are the denial evidence. Envoy writes them through its
+          # file flusher, which defaults to every 10s; 1s keeps "seen within
+          # seconds" true.
+          args: ["-c", "/etc/envoy/envoy.yaml", "--log-level", "warn", "--file-flush-interval-msec", "1000"]
           ports:
             - containerPort: 3128
           readinessProbe:
