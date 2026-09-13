@@ -20,6 +20,9 @@ SNI_CHECK=${SNI_CHECK:-1}                              # spike S4
 fail=0
 pass() { printf '  ok    %s\n' "$1"; }
 bad()  { printf '  FAIL  %s\n' "$1"; fail=1; }
+# Stream checks below use "grep PATTERN >/dev/null", never "grep -q": with
+# pipefail, grep -q exits at the first match, the writer dies of SIGPIPE, and
+# the pipeline reports failure for a match it found.
 hub()  { kubectl -n kube-system exec ds/cilium -- hubble observe --namespace "$WS_NS" -o json "$@" 2>/dev/null; }
 
 cleanup() {
@@ -29,8 +32,9 @@ cleanup() {
 trap cleanup EXIT
 
 # coder ssh joins arguments into one remote command; pass one string.
-wsh()  { "$CODER" ssh "$WS" -- "$1" >/tmp/ct-cmd.log 2>&1; }
-wout() { "$CODER" ssh "$WS" -- "$1" 2>/dev/null; }
+# timeout: coder ssh waits forever for an agent that never connects.
+wsh()  { timeout 300 "$CODER" ssh "$WS" -- "$1" >/tmp/ct-cmd.log 2>&1; }
+wout() { timeout 60 "$CODER" ssh "$WS" -- "$1" 2>/dev/null; }
 # blocked NAME CMD [MAX_MS]: CMD must fail, within MAX_MS (+3s coder ssh overhead).
 blocked() {
   local s rc ms max=${3:-$FAST_MS}
@@ -53,10 +57,14 @@ curl -s -m 5 -o /dev/null https://example.com \
 kubectl -n "$WS_NS" get cnp workspace-egress >/dev/null 2>&1 \
   && pass "workspace policy present" || { bad "CiliumNetworkPolicy workspace-egress missing"; exit 1; }
 
+# A ct-test pod from an earlier run may still be terminating; its labels
+# match the new workspace's and would hand later checks the wrong pod IP.
+kubectl -n "$WS_NS" wait --for=delete pod -l "com.coder.workspace.name=$WS" --timeout=3m >/dev/null 2>&1
+t_create=$SECONDS
 echo "  ..    creating workspace $WS (several minutes)"
 "$CODER" create "$WS" --template base --use-parameter-defaults --yes >/tmp/ct-create.log 2>&1 \
   || { bad "coder create failed; see /tmp/ct-create.log"; exit 1; }
-for _ in $(seq 60); do "$CODER" ssh "$WS" -- true >/dev/null 2>&1 && break; sleep 5; done
+for _ in $(seq 60); do timeout 10 "$CODER" ssh "$WS" -- true >/dev/null 2>&1 && break; sleep 5; done
 wsh true && pass "coder ssh works (coderd L7 allowlist admits the agent)" \
   || { bad "agent never connected: coderd allowlist too tight? check hubble --protocol http"; exit 1; }
 ws_ip=$(kubectl -n "$WS_NS" get pods -l "com.coder.workspace.name=$WS" -o jsonpath='{.items[0].status.podIP}')
@@ -90,17 +98,37 @@ spec:
 YAML
 kubectl -n "$WS_NS" wait --for=condition=Ready pod/ct-peer --timeout=5m >/dev/null
 peer_ip=$(kubectl -n "$WS_NS" get pod ct-peer -o jsonpath='{.status.podIP}')
+# Ready means the container started, not that python is listening yet.
+for _ in $(seq 30); do curl -fs -m 2 -o /dev/null "http://$peer_ip:8000/" && break; sleep 2; done
 curl -fsS -m 5 -o /dev/null "http://$peer_ip:8000/" \
   && pass "peer pod listening (positive control from node)" || bad "peer pod unreachable from node: peer check meaningless"
 
+# --- noise budget ------------------------------------------------------------
+# Everything so far was allowed work (boot, ssh, installs, builds). The only
+# drops it may cause are the Coder agent's embedded Tailscale port-mapping
+# probes, which no setting disables in Coder 2.36.5 (CODER_BLOCK_DIRECT and
+# TS_DISABLE_UPNP both tried): NAT-PMP/PCP and SSDP to the pod gateway, SSDP
+# multicast, and UDP to 203.0.113.1:12345. Policy keeps them blocked; any
+# other drop is unexplained, which is what must page. Phase 6 alert rules
+# reuse these three signatures.
+gw=$(ip -4 -o addr show cilium_host | awk '{split($4,a,"/"); print a[1]}')
+ws_pod=$(kubectl -n "$WS_NS" get pods -l "com.coder.workspace.name=$WS" -o jsonpath='{.items[0].metadata.name}')
+unexplained=$(kubectl -n kube-system exec ds/cilium -- hubble observe --since "$(( SECONDS - t_create ))s" \
+    --pod "$WS_NS/$ws_pod" --verdict DROPPED -o json 2>/dev/null \
+  | jq -r --arg gw "$gw" '.flow | {d: .IP.destination, u: (.l4.UDP.destination_port // 0), t: (.l4.TCP.destination_port // 0), q: (.l7.dns.query // ((.l7.http.method // "") + " " + (.l7.http.url // "")))}
+      | select(((.u == 5351 and .d == $gw) or (.u == 1900 and (.d == $gw or .d == "239.255.255.250")) or (.u == 12345 and .d == "203.0.113.1")) | not)
+      | "\(.d) udp:\(.u) tcp:\(.t) \(.q)"' | sort | uniq -c)
+[[ -z "$unexplained" ]] && pass "allowed work caused no drops beyond the 3 known agent probe signatures" \
+  || bad "unexplained drops during allowed work: $(tr -s ' \n' ' ' <<<"$unexplained")"
+
 # --- blocked -----------------------------------------------------------------
 blocked "direct egress to 1.1.1.1 ignoring proxy" "curl --noproxy '*' -s -m 20 -o /dev/null http://1.1.1.1"
-# Service-translated destinations get no ICMP deny response (spike S3): the
-# drop is silent, so this one waits for curl's own timeout.
+# Service-translated destinations (ClusterIPs) get no ICMP deny response
+# (spike S3): the drop is silent, so these wait for their own timeout.
 blocked "kube API 10.43.0.1:443" "curl --noproxy '*' -sk -m 10 -o /dev/null https://10.43.0.1/" 12000
 blocked "kubelet $NODE_IP:10250" "curl --noproxy '*' -sk -m 20 -o /dev/null https://$NODE_IP:10250/"
 blocked "other workspace pod $peer_ip:8000" "curl --noproxy '*' -s -m 20 -o /dev/null http://$peer_ip:8000/"
-blocked "coder Postgres coder-db:5432" "timeout 20 bash -c '</dev/tcp/coder-db.coder.svc.cluster.local/5432'"
+blocked "coder Postgres coder-db:5432" "timeout 10 bash -c '</dev/tcp/coder-db.coder.svc.cluster.local/5432'" 12000
 
 wsh 'getent hosts example.com' && bad "workspace resolved external name example.com (DNS exfil path)" \
   || pass "external DNS names refused"
@@ -130,19 +158,20 @@ wsh "awk '\$4 == \"00\"' /proc/net/if_inet6 | grep -q ." \
   && bad "workspace has a global IPv6 address" || pass "no global IPv6 address in workspace"
 
 # --- seen --------------------------------------------------------------------
-"$CODER" ssh "$WS" -- "curl --noproxy '*' -s -m 3 http://1.1.1.2" >/dev/null 2>&1
+timeout 30 "$CODER" ssh "$WS" -- "curl --noproxy '*' -s -m 3 http://1.1.1.2" >/dev/null 2>&1
 seen=0
 for s in 1 2 3 4 5; do
-  hub --since 30s --verdict DROPPED --to-ip 1.1.1.2 | grep -q "com.coder.workspace.name=$WS" && { seen=$s; break; }
+  # Not hub(): hubble refuses --to-ip combined with --namespace.
+  kubectl -n kube-system exec ds/cilium -- hubble observe --since 30s --verdict DROPPED --to-ip 1.1.1.2 -o json 2>/dev/null | grep "com.coder.workspace.name=$WS" >/dev/null && { seen=$s; break; }
   sleep 1
 done
 (( seen )) && pass "Hubble drop attributed to workspace $WS within ${seen}s" || bad "no attributed Hubble drop within 5s"
-hub --since 15m --protocol http | grep -q '/api/v2/users' && pass "Hubble L7 denial for coderd /api/v2/users" || bad "no Hubble L7 event for /api/v2/users"
-hub --since 15m --protocol dns | grep -q 'example.com' && pass "Hubble DNS event for example.com" || bad "no Hubble DNS event for example.com"
-kubectl -n sandcastle-egress logs deploy/envoy-egress --since=20m | grep '"authority":"github.com:443"' | grep -q "\"src\":\"$ws_ip\"" \
+hub --since 15m --protocol http | grep '/api/v2/users' >/dev/null && pass "Hubble L7 denial for coderd /api/v2/users" || bad "no Hubble L7 event for /api/v2/users"
+hub --since 15m --protocol dns | grep 'example.com' >/dev/null && pass "Hubble DNS event for example.com" || bad "no Hubble DNS event for example.com"
+kubectl -n sandcastle-egress logs deploy/envoy-egress --since=20m | grep '"authority":"github.com:443"' | grep "\"src\":\"$ws_ip\"" >/dev/null \
   && pass "Envoy denial logged with source $ws_ip (workspace $WS)" || bad "no Envoy log line for github.com from $ws_ip"
 if (( SNI_CHECK )); then
-  kubectl -n sandcastle-egress logs deploy/envoy-egress --since=20m | grep '"stage":"sni"' | grep '"sni":"github.com"' | grep -q '"flags":"NR"' \
+  kubectl -n sandcastle-egress logs deploy/envoy-egress --since=20m | grep '"stage":"sni"' | grep '"sni":"github.com"' | grep '"flags":"NR"' >/dev/null \
     && pass "Envoy logged SNI-mismatch refusal (sni github.com, NR)" || bad "SNI-mismatch refusal not logged by Envoy stage 2"
 fi
 
