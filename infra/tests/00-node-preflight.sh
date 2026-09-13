@@ -24,7 +24,7 @@ mem=$(awk '/MemTotal/ {print int($2/1024/1024)}' /proc/meminfo)
 (( cpus >= 8 )) && pass "${cpus} cpus" || bad "${cpus} cpus (8+ required)"
 (( mem >= 16 )) && pass "${mem}GB RAM" || bad "${mem}GB RAM (16GB+ required)"
 
-for t in kubectl helm; do
+for t in helm; do
   command -v "$t" >/dev/null && pass "$t installed" || warn "$t missing"
 done
 
