@@ -57,6 +57,10 @@ step "nexus mirror"
 kubectl apply -f "$PLATFORM_DIR/nexus/nexus.yaml"
 kubectl -n sandcastle-mirror rollout status statefulset/nexus --timeout=15m
 
+# A port-forward left by an interrupted run keeps 18081 bound to a pod that
+# may no longer exist; the new one then fails to bind and configure.sh polls
+# the dead tunnel until it times out.
+pkill -f 'port-forward svc/nexus 18081:8081' 2>/dev/null || true
 kubectl -n sandcastle-mirror port-forward svc/nexus 18081:8081 >/tmp/nexus-port-forward.log 2>&1 &
 pf_pid=$!
 trap 'kill "$pf_pid" 2>/dev/null || true; rm -f "$values_rendered"' EXIT
