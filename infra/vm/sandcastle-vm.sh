@@ -17,6 +17,14 @@ VM_USER="${VM_USER:-dev}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# Under sudo, $HOME becomes /root (wrong ssh key, wrong kubeconfig) and every
+# file lands root-owned, breaking later runs as the user. qemu:///system access
+# comes from libvirt group membership, not root.
+if [[ $EUID -eq 0 ]]; then
+  echo "do not run as root/sudo — run as your user (needs libvirt group; re-login after make vm-host)" >&2
+  exit 1
+fi
+
 v() { virsh -c qemu:///system "$@"; }
 ssh_opts() { printf '%s' "-i $SSH_KEY -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$IMG_DIR/known_hosts"; }
 
@@ -31,7 +39,8 @@ cmd_create() {
     exit 1
   fi
 
-  mkdir -p "$IMG_DIR"
+  [[ -w "$IMG_DIR" ]] || { echo "$IMG_DIR not writable by $USER — run make vm-host, then re-login" >&2; exit 1; }
+  [[ -r "$SSH_PUBKEY" ]] || { echo "ssh public key $SSH_PUBKEY not found — set SSH_PUBKEY" >&2; exit 1; }
 
   if [[ ! -f "$IMG_DIR/base.img" ]]; then
     echo "==> downloading base image"
@@ -55,6 +64,10 @@ cmd_create() {
   fi
 
   echo "==> creating overlay disk"
+  # No domain exists (checked above), so any overlay here is a leftover from a
+  # failed create. Unlinking needs only directory write access, which also
+  # clears root-owned leftovers from an accidental sudo run.
+  rm -f "$IMG_DIR/$VM_NAME.qcow2" "$IMG_DIR/$VM_NAME-seed.iso"
   qemu-img create -f qcow2 -F qcow2 -b "$IMG_DIR/base.img" "$IMG_DIR/$VM_NAME.qcow2" "${VM_DISK_GB}G"
 
   echo "==> writing cloud-init seed"
