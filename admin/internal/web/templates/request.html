@@ -1,6 +1,6 @@
 {{define "request"}}{{template "head" .}}
 <h1>Request access</h1>
-<p>Workspace <strong>{{.WS.Name}}</strong> was denied <code>{{.Host}}:{{.Port}}</code>.</p>
+<p>Workspace <strong>{{.WS.Name}}</strong> (<code>{{.WS.ID}}</code>) was denied <code>{{.Host}}:{{.Port}}</code>.</p>
 <form method="post" action="/requests">{{template "csrf" .User.CSRF}}
 <input type="hidden" name="ws" value="{{.WS.ID}}"><input type="hidden" name="host" value="{{.Host}}"><input type="hidden" name="port" value="{{.Port}}">
 <p><label for="j">Why does this workspace need it?</label><br>

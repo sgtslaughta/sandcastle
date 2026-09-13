@@ -22,9 +22,11 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request, u auth.User) {
 // requestForm is the landing page for the link in Envoy's 403 body.
 func (s *Server) requestForm(w http.ResponseWriter, r *http.Request, u auth.User) {
 	q := r.URL.Query()
+	// ws= (from My workspaces) only when src= is absent: the host part of
+	// Envoy's link is agent-controlled and could smuggle in another ws=.
 	ws, ok := s.Pods.ByIP(q.Get("src"))
-	if id := q.Get("ws"); id != "" {
-		ws, ok = s.Pods.ByID(id)
+	if !q.Has("src") {
+		ws, ok = s.Pods.ByID(q.Get("ws"))
 	}
 	if !ok {
 		http.Error(w, "no running workspace matches this link; it may have restarted. Use My workspaces.", http.StatusNotFound)

@@ -95,6 +95,11 @@ func TestMemberRequestFlowAndAdminApproval(t *testing.T) {
 	if rec := do(h, "GET", "/r?src=10.42.0.9&host=10.0.0.1:443", nil, cookies, false); rec.Code != 400 {
 		t.Fatalf("IP literal = %d", rec.Code)
 	}
+	// ws= must not override src=: the authority in the 403 link is agent-controlled.
+	if rec := do(h, "GET", "/r?src=10.42.0.9&ws="+wsBob+"&host=pypi.org:443", nil, cookies, false); rec.Code != 200 ||
+		!strings.Contains(rec.Body.String(), wsAlice) || strings.Contains(rec.Body.String(), "bob-ws") {
+		t.Fatalf("ws= overrode src= : %d %s", rec.Code, rec.Body)
+	}
 
 	form := url.Values{"csrf": {csrf}, "ws": {wsAlice}, "host": {"pypi.org"}, "port": {"443"}, "justification": {"packages"}}
 	rec = do(h, "POST", "/requests", form, cookies, false)
