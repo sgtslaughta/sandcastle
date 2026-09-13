@@ -51,7 +51,7 @@ Out (later phases):
  browser ──NodePort 30081──► sandcastle-admin (ns sandcastle-admin)
                               ├─ auth    : OAuth2 login via coderd (/oauth2/*)
                               ├─ store   : Postgres (own StatefulSet)
-                              ├─ watch   : pod informer (ns coder) → {workspace_id, pod IP}
+                              ├─ watch   : pod informer (ns sandcastle-workspaces) → {workspace_id, pod IP}
                               ├─ als     : Envoy access-log gRPC sink → denials
                               ├─ xds     : go-control-plane ADS :18000 ──────────► Envoy
                               ├─ cilium  : CNP reconciler ─────────────────────────► kube API
@@ -171,10 +171,9 @@ and the admin interface on 127.0.0.1. Admin serves everything else:
 
 ### Cilium (DNS rules)
 
-- **Per zone:** `CiliumNetworkPolicy ws-dns-zone-<zone-name>` in ns `coder`.
+- **Per zone:** `CiliumNetworkPolicy ws-dns-zone-<zone-name>` in ns `sandcastle-workspaces`.
   - Selector: `com.coder.workspace.id In [assigned ids]`.
-  - Default zone: `NotIn [all assigned ids]`, or `Exists` when nothing is
-    assigned.
+  - Default zone: `Exists` AND `NotIn [all assigned ids]` (`Exists` alone when nothing is assigned). The `Exists` term keeps unlabeled pods out: `NotIn` by itself also matches pods without the label.
   - Egress to kube-dns :53 with `rules.dns` built from the zone's `dns` rules.
 - **Per workspace with DNS grants:** `ws-dns-grant-<workspace-id>`, selecting
   that one ID.
@@ -198,7 +197,7 @@ four destinations.
 | browser (lab net) → admin | NodePort 30081 | new |
 | Envoy → admin | 18000 (ADS + ALS) | new; the only ingress to 18000 |
 | admin → coderd | 8080 | new (OAuth2 token exchange, users/me) |
-| admin → kube API | 6443 | new (pods list/watch in `coder`; CNP CRUD in `coder`) |
+| admin → kube API | 6443 | new (pods list/watch and CNP CRUD in `sandcastle-workspaces`) |
 | admin → admin-db | 5432 | new |
 | Envoy static allowlist | — | removed |
 | workspace → anything | — | **unchanged** |
@@ -227,7 +226,7 @@ The workspace CNP already denies the `sandcastle-admin` namespace, and a Phase
 | Agent floods denials to bury real ones | Dedup primary key, per-workspace cap, update throttling |
 | Crafted host in the request link (injection, wildcard grab) | Strict FQDN / `*.suffix` regex, lowercase, no IPs, no bare `*`; htmx templates auto-escape |
 | CSRF on approve | SameSite=Lax session cookie + per-session CSRF token on every POST |
-| Admin compromise = all egress | Highest-value target: no workspace route; NodePort served only on the lab net; minimal k8s RBAC (no secrets, only `coder` ns pods + CNPs) |
+| Admin compromise = all egress | Highest-value target: no workspace route; NodePort served only on the lab net; minimal k8s RBAC (no secrets, only `sandcastle-workspaces` pods + CNPs) |
 | Audit tampering via the app | Database grants: app role cannot UPDATE/DELETE `audit` |
 | Admin approving own request | Allowed, flagged `self_approved` |
 | Stale IP → wrong workspace gets a grant | Rebuild on every pod event; only Running pods with a pod IP |
