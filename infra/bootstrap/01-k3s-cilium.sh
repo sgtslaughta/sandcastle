@@ -7,7 +7,9 @@
 # policy that looks like it works. kube-proxy is replaced rather than kept so
 # that service traffic cannot bypass Cilium's datapath.
 #
-# Needs sudo. Re-runnable: skips k3s install if the node is already up.
+# Runs inside the lab VM (make cluster), never on a workstation: a CNI that
+# fails half-installed can take its host off the network. Needs sudo.
+# Re-runnable: skips k3s install if the node is already up.
 set -euo pipefail
 
 K3S_VERSION="${K3S_VERSION:-v1.36.4+k3s1}"
@@ -50,6 +52,7 @@ helm upgrade --install cilium cilium/cilium --version "$CILIUM_VERSION" \
   --set kubeProxyReplacement=true \
   --set k8sServiceHost="$NODE_IP" \
   --set k8sServicePort="$API_PORT" \
+  --set ipam.operator.clusterPoolIPv4PodCIDRList=10.42.0.0/16 \
   --set cni.exclusive=false \
   --set socketLB.hostNamespaceOnly=true \
   --set hubble.enabled=true \
@@ -57,6 +60,10 @@ helm upgrade --install cilium cilium/cilium --version "$CILIUM_VERSION" \
   --set hubble.ui.enabled=true \
   --wait --timeout 10m
 
+# The pod CIDR must match k3s's default (10.42.0.0/16); Cilium's own default
+# cluster pool is 10.0.0.0/8, which disagrees with what k3s hands the node and
+# claims routes for an entire private range any real network may be using.
+#
 # socketLB.hostNamespaceOnly is not a preference. Cilium's socket-level load
 # balancing rewrites connections in the host netns; Kata pods run their own
 # kernel behind a second netns, so socket LB must be confined to the host
