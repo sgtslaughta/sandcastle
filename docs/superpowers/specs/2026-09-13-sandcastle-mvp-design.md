@@ -37,10 +37,32 @@ Any packet from a workspace toward an enclave CIDR is a page, never a log line.
 ## Architecture
 
 Single host, k3s (flannel + kube-proxy disabled), Cilium CNI, kata-deploy with
-Cloud Hypervisor (`runtimeClassName: kata-clh`). Nested gVisor available as a
-per-template flag for workspaces running untrusted/agent-generated code
-(air-gapped patch latency justifies the second boundary; the two layers rarely
-share a vulnerability).
+Cloud Hypervisor (`runtimeClassName: kata-clh`).
+
+### Second isolation layer — revised 2026-09-13
+
+Planning assumed nested gVisor would be available as a per-template
+`runtimeClassName` flag, on the reasoning that air-gapped patch latency makes a
+single hypervisor boundary risky and that two layers rarely share a
+vulnerability. The reasoning stands; the mechanism does not. Running `runsc`
+inside a Kata guest is not a documented or supported upstream configuration —
+Kata and gVisor are published as sibling runtimes selected per workload, and a
+Kubernetes `RuntimeClass` selects exactly one of them.
+
+Consequences for this design:
+
+- `gvisor` is installed as a **sibling** RuntimeClass. It is not the boundary
+  for sensitive workspaces — on this host it is strictly weaker than Kata — and
+  exists to run the red-team suite's own tooling and as a documented fallback
+  for hosts without nested virt.
+- The genuine second layer inside a workspace is the **in-guest container
+  runtime**. The workspace already runs a DinD sidecar in the Kata VM, so
+  `runsc` installed inside the guest makes `docker run --runtime=runsc` the
+  boundary for agent-executed and third-party code. That is a supported gVisor
+  configuration, it sits exactly where untrusted code runs, and it does not
+  depend on nesting a Kubernetes runtime class.
+- Whether that in-guest `runsc` works under Cloud Hypervisor's guest kernel is
+  unverified. It is a spike in Phase 5, not a dependency of any earlier phase.
 
 ### Platform namespace
 
