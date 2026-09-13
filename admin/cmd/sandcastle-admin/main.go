@@ -185,7 +185,10 @@ func serve(ctx context.Context) error {
 		case <-resync.C:
 			reconcile()
 		case <-expiry.C:
-			if n, err := st.ExpireGrants(ctx); err != nil {
+			ectx, cancel := context.WithTimeout(ctx, 30*time.Second) // a hung DB must not stall rebuilds
+			n, err := st.ExpireGrants(ectx)
+			cancel()
+			if err != nil {
 				log.Printf("expire: %v", err)
 			} else if n > 0 {
 				notify()
