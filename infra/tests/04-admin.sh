@@ -29,7 +29,7 @@ api() {
 }
 wsh()  { timeout 300 "$CODER" ssh "$1" -- "$2" >/tmp/adm-cmd.log 2>&1; }
 wout() { timeout 120 "$CODER" ssh "$1" -- "$2" 2>/dev/null; }
-now_ms() { date +%s%3N; }
+now_ms() { echo $(( $(date +%s%N) / 1000000 )); } # uutils date ignores %3N
 # reach WS HOST: exit 0 if HTTPS via the proxy succeeds.
 reach() { wsh "$1" "curl -s -o /dev/null -m 10 https://$2"; }
 # await WS HOST yes|no SECS: poll inside the workspace (no ssh per try);
@@ -37,8 +37,13 @@ reach() { wsh "$1" "curl -s -o /dev/null -m 10 https://$2"; }
 await() {
   local test='curl -s -o /dev/null -m 5 https://'"$2"
   [[ $3 == no ]] && test="! $test"
-  wout "$1" "end=\$((\$(date +%s)+$4)); while [ \$(date +%s) -lt \$end ]; do if $test; then date +%s%3N; exit 0; fi; sleep 0.25; done; exit 1"
+  wout "$1" "end=\$((\$(date +%s)+$4)); while [ \$(date +%s) -lt \$end ]; do if $test; then echo \$(( \$(date +%s%N) / 1000000 )); exit 0; fi; sleep 0.25; done; exit 1"
 }
+# ws_offset WS: workspace clock minus VM clock, in ms. Kata guest clocks
+# drift (~2 min seen). The remote stamp is taken before $b, so this
+# underestimates the offset and elapsed times computed with it can only
+# read long, never short.
+ws_offset() { local w b; w=$(wout "$1" 'echo $(( $(date +%s%N) / 1000000 ))'); b=$(now_ms); echo $(( w - b )); }
 ws_id() { kubectl -n "$WS_NS" get pods -l "com.coder.workspace.name=$1" -o jsonpath='{.items[0].metadata.labels.com\.coder\.workspace\.id}'; }
 
 cleanup() {
@@ -87,12 +92,13 @@ reach "$A" example.org && bad "A reaches example.org before any grant" || pass "
 read -r code loc <<<"$(api /requests "ws=$A_ID" host=example.org port=443 "justification=phase 4 verify")"
 REQ_ID=${loc##*filed=}
 [[ "$code" == 303 && -n "$REQ_ID" ]] && pass "request filed" || bad "request failed ($code): $(cat /tmp/adm-api.log)"
+off=$(ws_offset "$A")
 await "$A" example.org yes 30 >/tmp/adm-await.log &
 w=$!; sleep 2; t0=$(now_ms)
 read -r code _ <<<"$(api "/requests/$REQ_ID/approve" ttl=168h)"
 wait $w; t1=$(cat /tmp/adm-await.log)
-if [[ "$code" == 303 && -n "$t1" ]] && (( t1 - t0 <= 5000 )); then pass "approval enforced for A in $((t1 - t0))ms"
-else bad "approval not enforced within 5s (code $code, took $(( ${t1:-0} - t0 ))ms)"; fi
+if [[ "$code" == 303 && -n "$t1" ]] && (( t1 - off - t0 <= 5000 )); then pass "approval enforced for A in $((t1 - off - t0))ms"
+else bad "approval not enforced within 5s (code $code, took $(( ${t1:-0} - off - t0 ))ms)"; fi
 reach "$B" example.org && bad "B reaches example.org (grant leaked across workspaces)" || pass "grant applies to A only"
 
 # --- revoke closes open tunnels ------------------------------------------------------
@@ -121,22 +127,23 @@ tun=$!
 for _ in $(seq 30); do grep '^open' /tmp/adm-tunnel.log >/dev/null && break; sleep 1; done
 grep '^open' /tmp/adm-tunnel.log >/dev/null && pass "long-lived tunnel to example.org open" || bad "tunnel did not open: $(cat /tmp/adm-tunnel.log)"
 GRANT_ID=$(sql "SELECT id FROM rules WHERE workspace_id='$A_ID' AND value='example.org'")
+off=$(ws_offset "$A")
 t0=$(now_ms)
 read -r code _ <<<"$(api "/rules/$GRANT_ID/delete" back=/workspaces)"
 t1=$(await "$A" example.org no 30)
-[[ "$code" == 303 && -n "$t1" ]] && (( t1 - t0 <= 5000 )) && pass "revocation enforced for new connections in $((t1 - t0))ms" \
-  || bad "revocation not enforced within 5s (code $code)"
+[[ "$code" == 303 && -n "$t1" ]] && (( t1 - off - t0 <= 5000 )) && pass "revocation enforced for new connections in $((t1 - off - t0))ms" \
+  || bad "revocation not enforced within 5s (code $code, took $(( ${t1:-0} - off - t0 ))ms)"
 wait $tun
 closed=$(awk '/^closed/ {print $2}' /tmp/adm-tunnel.log)
-[[ -n "$closed" ]] && (( closed - t0 <= 10000 )) && pass "open tunnel closed $((closed - t0))ms after revoke" \
+[[ -n "$closed" ]] && (( closed - off - t0 <= 10000 )) && pass "open tunnel closed $((closed - off - t0))ms after revoke" \
   || bad "open tunnel survived revoke: $(tail -2 /tmp/adm-tunnel.log)"
 
 # --- expiry ---------------------------------------------------------------------------
 read -r code _ <<<"$(api "/workspaces/$A_ID/grants" kind=host value=example.net port=443 ttl=60s)"
 [[ "$code" == 303 && -n "$(await "$A" example.net yes 30)" ]] && pass "60s grant to example.net works" || bad "short grant failed ($code)"
 [[ -n "$(await "$A" example.net no 110)" ]] && pass "grant expired and was enforced" || bad "expired grant still works after 110s"
-[[ "$(sql "SELECT count(*) FROM audit WHERE action='expire' AND detail->>'value'='example.net'")" -ge 1 ]] \
-  && pass "expiry audited" || bad "expiry not audited"
+ok=0; for _ in $(seq 45); do [[ "$(sql "SELECT count(*) FROM audit WHERE action='expire' AND detail->>'value'='example.net'")" -ge 1 ]] && { ok=1; break; }; sleep 1; done
+(( ok )) && pass "expiry audited" || bad "expiry not audited"
 
 # --- dns grant ------------------------------------------------------------------------
 read -r code _ <<<"$(api "/workspaces/$A_ID/grants" kind=dns value=example.org ttl=1h)"
