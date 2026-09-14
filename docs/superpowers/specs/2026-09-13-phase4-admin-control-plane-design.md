@@ -1,7 +1,7 @@
 # Phase 4 — Admin Control Plane — Design Spec
 
 Date: 2026-09-13
-Status: approved (design); spikes passed — see [results](2026-09-13-phase4-spike-results.md)
+Status: implemented (v0.4.0); spikes passed — see [results](2026-09-13-phase4-spike-results.md)
 Parent: [MVP design](2026-09-13-sandcastle-mvp-design.md) · Builds on: [Phase 3](2026-09-13-phase3-containment-core-design.md)
 
 ## Goal
@@ -73,7 +73,7 @@ a restarted admin converges on its first rebuild.
 | `internal/store` | SQL migrations, queries | Postgres |
 | `internal/policy` | pure: rows + pod IPs → effective allowlist per workspace | none |
 | `internal/xds` | pure builder: effective allowlist → Envoy snapshot; ADS server | go-control-plane |
-| `internal/als` | access-log gRPC service → denial upserts | store, watch |
+| `internal/als` (as built: folded into `internal/xds`, `server.go` `StreamAccessLogs`) | access-log gRPC service → denial upserts | store, watch |
 | `internal/watch` | pod informer: Running pods with `com.coder.workspace.id` + pod IP | client-go |
 | `internal/cilium` | pure render of desired CNPs + apply/prune owned objects | kube API |
 | `internal/web` | htmx pages: queue, denials, zones, workspaces, audit, request form | store, auth |
@@ -173,7 +173,8 @@ and the admin interface on 127.0.0.1. Admin serves everything else:
 
 ### Cilium (DNS rules)
 
-- **Per zone:** `CiliumNetworkPolicy ws-dns-zone-<zone-name>` in ns `sandcastle-workspaces`.
+- **Per zone:** `CiliumNetworkPolicy ws-dns-zone-<zone-name>` (as built: named by
+  zone ID, not zone name — `cilium.go` `Render`) in ns `sandcastle-workspaces`.
   - Selector: `com.coder.workspace.id In [assigned ids]`.
   - Default zone: `Exists` AND `NotIn [all assigned ids]` (`Exists` alone when nothing is assigned). The `Exists` term keeps unlabeled pods out: `NotIn` by itself also matches pods without the label.
   - Egress to kube-dns :53 with `rules.dns` built from the zone's `dns` rules.
@@ -344,7 +345,8 @@ reads its allowlist from the seeded default zone.
 ### DR-4.7 Separate Postgres for admin
 - **Who:** owner, proposed by Claude.
 - **When:** 2026-09-13.
-- **Where:** `platform/admin/postgres.yaml`.
+- **Where:** `platform/admin/postgres.yaml` (as built: defined in
+  `platform/admin/admin.yaml`; no separate postgres.yaml file).
 - **What:** own StatefulSet and secret in `sandcastle-admin`.
 - **Why:** coderd credential compromise does not expose policy/audit data, and vice versa; independent upgrades.
 - **Alternatives:** an extra database on coder-db.
@@ -380,4 +382,78 @@ reads its allowlist from the seeded default zone.
 - **What:** server-rendered pages with POST-redirect-GET forms and no JavaScript. The first start seeds zone `default` with host `example.com` on 443 and 80, matching the Phase 3 allowlist.
 - **Why:** an air-gapped browser cannot load htmx from a CDN; vendoring adds a file for no flow that needs partial swaps. The seed keeps the Phase 3 suite green.
 - **Alternatives:** vendored htmx (add when a page needs live updates, e.g. the queue).
+
+## Implementation findings — 2026-09-13
+
+- **uutils coreutils `date` ignores `%3N`, and the Kata guest clock ran ~118 s
+  behind the VM.** Who: implementer (Task 14), caught by the controller.
+  What: `04-admin.sh`'s timing harness produced bogus 19-digit millisecond
+  stamps and cross-clock timing comparisons. When: Task 14 step 3, first run
+  (36 ok / 3 FAIL). Where: `infra/tests/04-admin.sh`. Why: Ubuntu 26.04's
+  uutils `date` silently drops `%3N` instead of erroring, and the guest and
+  VM clocks are not synced. Fixed in commit `503662f` (ms via `%N`/1e6,
+  conservative workspace-clock offset, poll audit at 45 s).
+- **`make admin` was a no-op.** Who: OWNER, caught during Task 13 step 10
+  deploy. What: the `admin/` directory on disk shadowed the `admin` Make
+  target, so `make admin` matched the directory and never ran the recipe.
+  When: Task 13 step 10. Where: root `Makefile`. Why: `admin` wasn't declared
+  `.PHONY`. Fixed in commit `3e0bcc6`.
+- **Agent worktrees started from `origin/main`, not local main.** Who:
+  controller, noted in the SDD ledger. What: wave-2/3 dispatched worktrees
+  based off `origin/main` (`f99339d`) rather than the controller's local
+  `main` at the dispatch commit. When: wave 2 dispatch, Task 4→5/7/8/9/10.
+  Where: agent worktree creation process. Why: the worktree tool defaults to
+  the remote-tracking branch; agents rebased onto the correct base
+  themselves. Process note, no code fix.
+- **Final-review findings #1–#7, #10, #11: fixed.** Who: fix-wave
+  implementer, reviewed by the controller. What: cookie/MAC name binding and
+  empty-ID/CSRF rejection (#1), open-redirect validation (#2), exact-host
+  shadowing a wildcard (#3), Postgres owner DSN scoped to a migrate
+  initContainer (#4), `ws=`/`src=` request-link precedence (#5), Cilium
+  `Apply` continuing past per-object errors (#6), `ExpireGrants` timeout
+  (#7), bootstrap token off argv with revoke-on-exit plus ordering (#11).
+  When: fix wave, `503662f..2604add`. Where: `admin/internal/auth/auth.go`,
+  `admin/internal/policy/policy.go`, `platform/admin/admin.yaml`,
+  `admin/internal/web/handlers.go`, `admin/internal/cilium/cilium.go`,
+  `admin/cmd/sandcastle-admin/main.go`, `infra/bootstrap/05-admin.sh`. Why:
+  close every Important/Minor finding assigned in `final-review.md` before
+  tagging v0.4.0. Commits: `ac74876` (#1, #2), `46bb834` (#3), `2393f4e`
+  (#4), `057d88f` (#5), `58f2527` (#6), `222e655` (#7), `2604add` (#11).
+  Finding #10 (denial throttle before the database) also landed in this
+  wave, commit `a0e1281`.
+- **#8 (username audit identity) and #9 (no server-side session revocation)
+  left open.** Who: controller ruling in the SDD ledger. What: both are
+  documented as gaps rather than fixed, since neither has a privilege
+  impact — the admin flag comes from Coder roles read at login, not from the
+  mutable username. When: final-review disposition, before the fix wave.
+  Where: tracked as `G-16` (username identity) and `G-15` (session
+  revocation) in `docs/security/05-gaps-and-monitoring.md`. Why: scoped the
+  fix wave to the findings with security impact; parked the other two for
+  Phase 5.
+- **Listener churn from hashing the whole zone IP set.** Who: doc writer
+  (07), found during documentation review, tracked as `G-27`. What:
+  `admin/internal/xds/build.go` `hashName` hashes `(host, sorted IP set)`, so
+  any workspace start or stop in a zone renames that zone's host listeners
+  and drains every workspace's open tunnels to those hosts within 5 s. When:
+  found during the Phase 4 documentation pass, 2026-09-13. Where:
+  `admin/internal/xds/build.go`. Why: not an access leak (fails closed), but
+  a nuisance-level denial of service at higher pod-churn rates; recommended
+  fix (rename only on IP removal, or per-workspace filter chains) is
+  targeted before tier 500 — see `docs/security/05-gaps-and-monitoring.md`
+  and `docs/security/07-enterprise-scale.md` section 5.
+- **Spec drift corrections (fixed inline above where each appears).** Who:
+  doc writer, controller ruling "#12 spec drift fixed in Task 14 docs step."
+  What: CiliumNetworkPolicies are named by zone ID, not zone name; the ALS
+  gRPC service lives in `internal/xds` (`server.go`), not a separate
+  `internal/als` package; the admin Postgres StatefulSet is defined in
+  `platform/admin/admin.yaml`, not a separate `postgres.yaml`; and a plain
+  HTTP request to a host that is allowed only on 443 returns a 404 (Envoy's
+  own no-vhost-match response) with no `denials` row recorded, rather than
+  an audited 403. When: found in the final review (#12) and Task 14 docs
+  step. Where: `internal/cilium/cilium.go`, `internal/xds/server.go`,
+  `platform/admin/admin.yaml`, `internal/xds` route config. Why: the design
+  doc predates several implementation shortcuts taken for simplicity (one
+  less package, one less file) and one Envoy default (unmatched vhost →
+  404) that the build didn't override; none change the security posture.
+  The 404/no-denial-row gap is tracked as `G-24`.
 

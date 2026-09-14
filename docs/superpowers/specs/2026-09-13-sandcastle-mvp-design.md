@@ -221,13 +221,25 @@ route attempts, (c) commits that would have reached an enclave via CI.
 1. Isolation substrate: k3s + Cilium + kata-deploy/CLH + gVisor class.
 2. DX baseline: Coder + `base` template + DinD + Nexus mirror.
 3. Containment core: no-default-route ×2 + Envoy gate + 403 flow. — complete (v0.3.0)
-4. Admin control plane: zones, request/approve, xDS, Cilium reconciler, UI.
+4. Admin control plane: zones, request/approve, xDS, Cilium reconciler, UI. — complete (v0.4.0)
 5. Brokers + enclaves + inference: data-broker, cred-broker, Ollama ceilings.
 6. Detection + response: Falco, honeytokens, Loki/Grafana, ratelimit, breaker.
 7. Desktop template: Webtop/selkies websocket under Kata.
 8. Red team + eval suite; hardening loop on findings.
 
 Each phase ends with a scripted verify step under `infra/tests/`.
+
+### Phase 4 addenda (v0.4.0, as built)
+
+- The admin UI is served on NodePort 30081, reached only from the lab
+  network, and logs in through Coder OAuth2.
+- `platform/policy/workspace-dns-allow.yaml` is replaced by admin-managed
+  zones (`admin/internal/cilium`); DNS rules live in Postgres and are
+  reconciled to per-zone/per-grant CiliumNetworkPolicies.
+- Envoy's egress listener is configured entirely by xDS from
+  `sandcastle-admin`; the bootstrap ConfigMap carries no static listeners.
+- The reasoning behind each admin-plane control (threats, alternatives,
+  residual risk) lives in `docs/security/`, not in this spec.
 
 ## Risks
 

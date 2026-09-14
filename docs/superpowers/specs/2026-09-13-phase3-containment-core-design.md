@@ -171,7 +171,8 @@ Found by the verify suite after the spike. Each finding changed the build.
 - **Permitting names** (owner requirement: closed networks use other registry
   hostnames): `platform/policy/workspace-dns-allow.yaml` plus `make policy`.
   Resolving never grants reaching. The file holds a `.invalid` placeholder,
-  because an empty DNS rule list allows every name.
+  because an empty DNS rule list allows every name. (Superseded in Phase 4 by
+  admin zones.)
 - **Envoy log latency.** The file flush defaults to 10 s; set to 1 s so
   denials are visible within seconds.
 - **Silent drops.** ClusterIP destinations (kube API, coder-db) get no ICMP
