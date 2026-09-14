@@ -1,6 +1,6 @@
 # Sandcastle
 
-Agent-containment developer platform for air-gapped enterprises.
+Agent-containment developer platform for enterprises.
 
 Developers get real workspaces — terminal, IDE, desktop, `apt install`,
 `docker build`. A hostile or runaway AI agent with root inside one of those
