@@ -80,14 +80,32 @@ module "eks" {
     example = {
       ami_type       = "BOTTLEROCKET_x86_64"
 
-      min_size = 1
-      max_size = 3
+      min_size = 3
+      max_size = 4
       # This value is ignored after the initial creation
       # https://github.com/bryantbiggs/eks-desired-size-hack
-      desired_size = 1
+      desired_size = 3
 
       iam_role_additional_policies = {
         AmazonEBSCSIDriverPolicy = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+        AmazonBedrockFullAccess  = "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
+      }
+
+      metadata_options = {
+        http_endpoint               = "enabled"
+        http_tokens                 = "required"
+        http_put_response_hop_limit = 2
+      }
+
+      block_device_mappings = {
+        xvdb = {
+          device_name = "/dev/xvdb"
+          ebs = {
+            volume_size           = 50
+            volume_type           = "gp3"
+            delete_on_termination = true
+          }
+        }
       }
 
       # This is not required - demonstrates how to pass additional configuration

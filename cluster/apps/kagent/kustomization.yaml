@@ -4,3 +4,8 @@ resources:
   - kagent-repository.yaml
   - kagent-crds.yaml
   - kagent.yaml
+  - nemotron-modelconfig.yaml
+  - nemotron-agent.yaml
+  - kagent-openai-proxy.yaml
+
+

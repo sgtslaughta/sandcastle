@@ -1,0 +1,10 @@
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: nemotron
+  namespace: kagent
+spec:
+  provider: Bedrock
+  model: nvidia.nemotron-nano-9b-v2
+  bedrock:
+    region: us-west-2

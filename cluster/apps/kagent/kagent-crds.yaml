@@ -24,3 +24,6 @@ spec:
         name: kagent
         namespace: flux-system
       interval: 5m0s
+  values:
+    substrate:
+      enabled: true

@@ -5,6 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m0s
+  timeout: 10m0s
   targetNamespace: kagent
   install:
     createNamespace: true
@@ -25,3 +26,32 @@ spec:
         name: kagent
         namespace: flux-system
       interval: 5m0s
+  values:
+    substrate:
+      enabled: true
+    controller:
+      substrate:
+        enabled: true
+        defaultWorkerPool:
+          name: kagent-default
+    # Disable default demo agents that require kagent-openai secret
+    promql-agent:
+      enabled: false
+    k8s-agent:
+      enabled: false
+    kgateway-agent:
+      enabled: false
+    istio-agent:
+      enabled: false
+    observability-agent:
+      enabled: false
+    argo-rollouts-agent:
+      enabled: false
+    helm-agent:
+      enabled: false
+    cilium-policy-agent:
+      enabled: false
+    cilium-manager-agent:
+      enabled: false
+    cilium-debug-agent:
+      enabled: false

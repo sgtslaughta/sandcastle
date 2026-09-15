@@ -4,4 +4,4 @@ resources:
   - flux-system
   - infra
   - apps/kagent
-  - apps/open-webui
+  - apps/librechat
