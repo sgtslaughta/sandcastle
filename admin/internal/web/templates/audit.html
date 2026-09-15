@@ -1,6 +1,0 @@
-{{define "audit"}}{{template "head" .}}
-<h1>Audit log</h1>
-<div class="scroll"><table><tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr>
-{{range .Rows}}<tr><td>{{.At.Format "2006-01-02 15:04:05"}}</td><td>{{.Actor}}</td><td>{{.Action}}</td><td><code>{{.Detail}}</code></td></tr>{{end}}
-</table></div>
-{{template "foot"}}{{end}}
