@@ -6,7 +6,7 @@ metadata:
 spec:
   replicas: 1
   sandboxClass: gvisor
-  ateomImage: ghcr.io/kagent-dev/substrate/ateom:v0.0.9
+  ateomImage: ghcr.io/kagent-dev/substrate/ateom-gvisor:v0.0.9
 ---
 apiVersion: kagent.dev/v1alpha2
 kind: SandboxAgent
