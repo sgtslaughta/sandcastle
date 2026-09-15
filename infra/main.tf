@@ -65,6 +65,12 @@ module "eks" {
     vpc-cni = {
       before_compute = true
     }
+    aws-ebs-csi-driver = {
+      pod_identity_association = [{
+        role_arn        = aws_iam_role.ebs_csi.arn
+        service_account = "ebs-csi-controller-sa"
+      }]
+    }
   }
 
   vpc_id     = module.vpc.vpc_id
@@ -79,6 +85,10 @@ module "eks" {
       # This value is ignored after the initial creation
       # https://github.com/bryantbiggs/eks-desired-size-hack
       desired_size = 1
+
+      iam_role_additional_policies = {
+        AmazonEBSCSIDriverPolicy = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+      }
 
       # This is not required - demonstrates how to pass additional configuration
       # Ref https://bottlerocket.dev/en/os/1.19.x/api/settings/
@@ -102,4 +112,29 @@ module "eks" {
   }
 
   tags = local.tags
+}
+
+data "aws_iam_policy_document" "ebs_csi_pod_identity" {
+  statement {
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["pods.eks.amazonaws.com"]
+    }
+    actions = [
+      "sts:AssumeRole",
+      "sts:TagSession",
+    ]
+  }
+}
+
+resource "aws_iam_role" "ebs_csi" {
+  name               = "${local.name}-ebs-csi"
+  assume_role_policy = data.aws_iam_policy_document.ebs_csi_pod_identity.json
+  tags               = local.tags
+}
+
+resource "aws_iam_role_policy_attachment" "ebs_csi" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+  role       = aws_iam_role.ebs_csi.name
 }
