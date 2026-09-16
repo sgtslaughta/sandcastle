@@ -6,5 +6,8 @@ metadata:
 spec:
   provider: OpenAI
   model: gemma
+  apiKeySecret: kagent-openai
+  apiKeySecretKey: OPENAI_API_KEY
   openAI:
     baseUrl: "http://llm-d.llm-d.svc.cluster.local:8000/v1"
+

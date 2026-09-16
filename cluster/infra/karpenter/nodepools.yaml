@@ -13,6 +13,12 @@ spec:
   securityGroupSelectorTerms:
     - tags:
         karpenter.sh/discovery: ai-agent-cluster
+  blockDeviceMappings:
+    - deviceName: /dev/xvdb
+      ebs:
+        volumeSize: 100Gi
+        volumeType: gp3
+        deleteOnTermination: true
   tags:
     karpenter.sh/discovery: ai-agent-cluster
 ---
