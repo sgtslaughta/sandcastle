@@ -6,3 +6,4 @@ resources:
   - apps/kagent
   - apps/librechat
   - apps/authelia
+  - apps/llm-d

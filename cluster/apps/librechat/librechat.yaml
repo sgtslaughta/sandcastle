@@ -68,11 +68,11 @@ spec:
               apiKey: "kagent"
               baseURL: "http://kagent-openai-proxy.kagent.svc.cluster.local:8000/v1"
               models:
-                default: ["nemotron-agent"]
+                default: ["gemma", "nemotron"]
                 fetch: true
               titleConvo: true
-              titleModel: "nemotron-agent"
-              modelDisplayLabel: "Kagent"
+              titleModel: "gemma"
+              modelDisplayLabel: "Kagent (Gemma)"
         mcpServers:
           kagent-tools:
             type: sse

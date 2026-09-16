@@ -9,20 +9,23 @@ spec:
   ateomImage: ghcr.io/kagent-dev/substrate/ateom-gvisor:v0.0.9
 ---
 apiVersion: kagent.dev/v1alpha2
-kind: SandboxAgent
+kind: Agent
 metadata:
-  name: nemotron-agent
+  name: gemma
   namespace: kagent
 spec:
   type: Declarative
   declarative:
     runtime: go
-    modelConfig: nemotron
+    modelConfig: gemma
     systemMessage: |
-      You are an NVIDIA Nemotron assistant running inside an Agent Substrate sandbox in Kubernetes. You assist users with cloud-native tasks, cluster operations, and reasoning.
-  substrate:
-    workerPoolRef:
-      name: kagent-default
+      You are a helpful AI assistant running Gemma via llm-d in Kubernetes. You assist users with cloud-native tasks, cluster operations, and reasoning.
+    tools:
+      - type: McpServer
+        mcpServer:
+          kind: RemoteMCPServer
+          apiGroup: kagent.dev
+          name: kagent-kagent-tool-server
 ---
 apiVersion: kagent.dev/v1alpha2
 kind: Agent
@@ -35,7 +38,7 @@ spec:
     runtime: go
     modelConfig: nemotron
     systemMessage: |
-      You are an NVIDIA Nemotron assistant running in Kubernetes. You assist users with cloud-native tasks, cluster operations, and reasoning.
+      You are a helpful AI assistant running Gemma via llm-d in Kubernetes. You assist users with cloud-native tasks, cluster operations, and reasoning.
     tools:
       - type: McpServer
         mcpServer:

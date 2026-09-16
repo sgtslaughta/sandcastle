@@ -81,59 +81,6 @@ module "eks" {
     "karpenter.sh/discovery" = local.name
   }
 
-  eks_managed_node_groups = {
-    example = {
-      ami_type       = "BOTTLEROCKET_x86_64"
-
-      min_size = 3
-      max_size = 4
-      # This value is ignored after the initial creation
-      # https://github.com/bryantbiggs/eks-desired-size-hack
-      desired_size = 4
-
-      iam_role_additional_policies = {
-        AmazonEBSCSIDriverPolicy = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-        AmazonBedrockFullAccess  = "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
-      }
-
-      metadata_options = {
-        http_endpoint               = "enabled"
-        http_tokens                 = "required"
-        http_put_response_hop_limit = 2
-      }
-
-      block_device_mappings = {
-        xvdb = {
-          device_name = "/dev/xvdb"
-          ebs = {
-            volume_size           = 50
-            volume_type           = "gp3"
-            delete_on_termination = true
-          }
-        }
-      }
-
-      # This is not required - demonstrates how to pass additional configuration
-      # Ref https://bottlerocket.dev/en/os/1.19.x/api/settings/
-      bootstrap_extra_args = <<-EOT
-        # The admin host container provides SSH access and runs with "superpowers".
-        # It is disabled by default, but can be disabled explicitly.
-        [settings.host-containers.admin]
-        enabled = false
-
-        # The control host container provides out-of-band access via SSM.
-        # It is enabled by default, and can be disabled if you do not expect to use SSM.
-        # This could leave you with no way to access the API and change settings on an existing node!
-        [settings.host-containers.control]
-        enabled = true
-
-        # extra args added
-        [settings.kernel]
-        lockdown = "integrity"
-      EOT
-    }
-  }
-
   tags = local.tags
 }
 
