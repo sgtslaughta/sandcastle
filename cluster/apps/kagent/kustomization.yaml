@@ -5,8 +5,8 @@ resources:
   - kagent-crds.yaml
   - kagent.yaml
   - kagent-openai-secret.yaml
-  - nemotron-modelconfig.yaml
-  - nemotron-agent.yaml
+  - gemma-modelconfig.yaml
+  - gemma-agent.yaml
   - kagent-openai-proxy.yaml
 
 

@@ -26,22 +26,3 @@ spec:
           kind: RemoteMCPServer
           apiGroup: kagent.dev
           name: kagent-kagent-tool-server
----
-apiVersion: kagent.dev/v1alpha2
-kind: Agent
-metadata:
-  name: nemotron
-  namespace: kagent
-spec:
-  type: Declarative
-  declarative:
-    runtime: go
-    modelConfig: nemotron
-    systemMessage: |
-      You are a helpful AI assistant running Gemma via llm-d in Kubernetes. You assist users with cloud-native tasks, cluster operations, and reasoning.
-    tools:
-      - type: McpServer
-        mcpServer:
-          kind: RemoteMCPServer
-          apiGroup: kagent.dev
-          name: kagent-kagent-tool-server
