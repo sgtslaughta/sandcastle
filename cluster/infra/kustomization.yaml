@@ -2,3 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - storageclass-gp3.yaml
+  - gateway-api-crds.yaml
+  - cert-manager
+  - traefik
+  - karpenter

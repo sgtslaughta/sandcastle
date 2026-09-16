@@ -5,3 +5,4 @@ resources:
   - infra
   - apps/kagent
   - apps/librechat
+  - apps/authelia

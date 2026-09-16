@@ -1,0 +1,17 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: example-wildcard-tls
+  namespace: traefik
+spec:
+  secretName: example-wildcard-tls
+  issuerRef:
+    name: sandcastle-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - "*.example.com"
+    - "example.com"
+    - "chat.example.com"
+    - "auth.example.com"
+    - "kagent.example.com"

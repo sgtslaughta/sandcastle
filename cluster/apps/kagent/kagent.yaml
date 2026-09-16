@@ -34,7 +34,7 @@ spec:
         enabled: true
         ateApiEndpoint: "dns:///kagent-kagent-api.kagent.svc:443"
         atenetRouterURL: "http://kagent-kagent-atenet-router.kagent.svc:80"
-        ateApiInsecure: true
+        ateApiInsecure: false
         defaultWorkerPool:
           name: kagent-default
     # Disable default demo agents that require kagent-openai secret

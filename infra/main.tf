@@ -42,6 +42,7 @@ module "vpc" {
 
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb" = 1
+    "karpenter.sh/discovery"          = local.name
   }
 
   tags = local.tags
@@ -76,6 +77,10 @@ module "eks" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
+  node_security_group_tags = {
+    "karpenter.sh/discovery" = local.name
+  }
+
   eks_managed_node_groups = {
     example = {
       ami_type       = "BOTTLEROCKET_x86_64"
@@ -84,7 +89,7 @@ module "eks" {
       max_size = 4
       # This value is ignored after the initial creation
       # https://github.com/bryantbiggs/eks-desired-size-hack
-      desired_size = 3
+      desired_size = 4
 
       iam_role_additional_policies = {
         AmazonEBSCSIDriverPolicy = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
@@ -155,4 +160,49 @@ resource "aws_iam_role" "ebs_csi" {
 resource "aws_iam_role_policy_attachment" "ebs_csi" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
   role       = aws_iam_role.ebs_csi.name
+}
+
+################################################################################
+# Karpenter
+################################################################################
+
+module "karpenter" {
+  source = "terraform-aws-modules/eks/aws//modules/karpenter"
+
+  cluster_name = module.eks.cluster_name
+
+  enable_inline_policy            = true
+  create_pod_identity_association = true
+
+  # Attach policies needed by Karpenter nodes
+  node_iam_role_additional_policies = {
+    AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+    AmazonEBSCSIDriverPolicy     = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+  }
+
+  tags = local.tags
+}
+
+################################################################################
+# Service Quotas
+################################################################################
+
+resource "aws_servicequotas_service_quota" "g_instances" {
+  quota_code   = "L-DB2E81BA"
+  service_code = "ec2"
+  value        = 32
+}
+
+################################################################################
+# Outputs
+################################################################################
+
+output "karpenter_node_role_name" {
+  description = "Karpenter node IAM role name"
+  value       = module.karpenter.node_iam_role_name
+}
+
+output "karpenter_queue_name" {
+  description = "Karpenter SQS queue name"
+  value       = module.karpenter.queue_name
 }

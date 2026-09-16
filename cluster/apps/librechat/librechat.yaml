@@ -33,8 +33,32 @@ spec:
     global:
       librechat:
         existingSecretName: "librechat-credentials-env"
+    strategy:
+      type: Recreate
+    ingress:
+      enabled: false
+    hostAliases:
+      - ip: "172.20.26.32"
+        hostnames:
+          - "auth.example.com"
+          - "chat.example.com"
     librechat:
-      configEnv: {}
+      configEnv:
+        ALLOW_INSECURE_DOMAINS: "true"
+        NODE_TLS_REJECT_UNAUTHORIZED: "0"
+        SCHEDULES_SINGLE_PROCESS: "true"
+        DOMAIN_CLIENT: "https://chat.example.com"
+        DOMAIN_SERVER: "https://chat.example.com"
+        ALLOW_SOCIAL_LOGIN: "true"
+        ALLOW_SOCIAL_REGISTRATION: "true"
+        OPENID_CLIENT_ID: "librechat"
+        OPENID_CLIENT_SECRET: "librechat-client-secret"
+        OPENID_ISSUER: "https://auth.example.com"
+        OPENID_SESSION_SECRET: "7f4c0a1843b44b8296a152345e678901"
+        OPENID_SCOPE: "openid profile email offline_access"
+        OPENID_CALLBACK_URL: "https://chat.example.com/oauth/openid/callback"
+        OPENID_BUTTON_LABEL: "Authelia SSO"
+        CHECK_EMAIL_DOMAIN: "false"
       configYamlContent: |
         version: 1.2.1
         cache: true
