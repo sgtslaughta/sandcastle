@@ -40,3 +40,10 @@ spec:
     serviceAccount:
       create: true
       name: karpenter
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution: []
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: "topology.kubernetes.io/zone"
+        whenUnsatisfiable: "ScheduleAnyway"
