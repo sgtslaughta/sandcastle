@@ -66,7 +66,7 @@ spec:
           custom:
             - name: "kaito"
               apiKey: "kaito"
-              baseURL: "http://traefik-gateway.traefik.svc.cluster.local:8000/v1"
+              baseURL: "http://traefik-traefik.traefik.svc.cluster.local:80/v1"
               models:
                 default: ["gemma"]
                 fetch: true
@@ -80,7 +80,7 @@ spec:
             - "gitea-mcp.gitea.svc.cluster.local"
         mcpServers:
           kagent-tools:
-            type: sse
+            type: streamable-http
             url: "http://kagent-kagent-tools.kagent.svc.cluster.local:8084/mcp"
           gitea:
             type: streamable-http
