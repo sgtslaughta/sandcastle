@@ -9,17 +9,20 @@ spec:
   ateomImage: ghcr.io/kagent-dev/substrate/ateom-gvisor:v0.0.9
 ---
 apiVersion: kagent.dev/v1alpha2
-kind: Agent
+kind: SandboxAgent
 metadata:
   name: gemma
   namespace: kagent
 spec:
   type: Declarative
+  substrate:
+    workerPoolRef:
+      name: kagent-default
   declarative:
     runtime: go
     modelConfig: gemma
     systemMessage: |
-      You are a helpful AI assistant running Gemma via llm-d in Kubernetes. You assist users with cloud-native tasks, cluster operations, and reasoning.
+      You are a helpful AI assistant running Gemma in Kubernetes with access to Agent Substrate and cluster tools.
     tools:
       - type: McpServer
         mcpServer:
