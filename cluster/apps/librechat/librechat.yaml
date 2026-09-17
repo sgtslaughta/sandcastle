@@ -73,7 +73,15 @@ spec:
               titleConvo: true
               titleModel: "gemma"
               modelDisplayLabel: "KAITO (Gemma)"
+        mcpSettings:
+          allowedDomains:
+            - "*.cluster.local"
+            - "kagent-kagent-tools.kagent.svc.cluster.local"
+            - "gitea-mcp.gitea.svc.cluster.local"
         mcpServers:
           kagent-tools:
             type: sse
             url: "http://kagent-kagent-tools.kagent.svc.cluster.local:8084/mcp"
+          gitea:
+            type: streamable-http
+            url: "http://gitea-mcp.gitea.svc.cluster.local:8000/mcp"
