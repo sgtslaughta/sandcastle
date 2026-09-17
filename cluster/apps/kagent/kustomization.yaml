@@ -5,6 +5,7 @@ resources:
   - kagent-crds.yaml
   - kagent.yaml
   - gemma-modelconfig.yaml
+  - gemma-apikey-secret.yaml
   - gemma-agent.yaml
   - gitea-mcp-server.yaml
 

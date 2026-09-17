@@ -69,3 +69,5 @@ spec:
       enabled: false
     ingress:
       enabled: false
+    strategy:
+      type: "Recreate"

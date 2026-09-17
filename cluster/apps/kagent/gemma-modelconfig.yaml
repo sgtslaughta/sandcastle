@@ -6,5 +6,7 @@ metadata:
 spec:
   provider: OpenAI
   model: gemma
+  apiKeySecret: gemma-apikey
+  apiKeySecretKey: api-key
   openAI:
     baseUrl: "http://traefik-gateway.traefik.svc.cluster.local:8000/v1"
