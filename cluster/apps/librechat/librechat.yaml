@@ -42,6 +42,7 @@ spec:
         hostnames:
           - "auth.example.com"
           - "chat.example.com"
+          - "git.example.com"
     librechat:
       configEnv:
         ALLOW_INSECURE_DOMAINS: "true"
@@ -78,12 +79,20 @@ spec:
             - "*.cluster.local"
             - "kagent-kagent-tools.kagent.svc.cluster.local"
             - "gitea-mcp.gitea.svc.cluster.local"
+            - "git.example.com"
+            - "*.example.com"
         mcpServers:
           kagent-tools:
             type: streamable-http
             url: "http://kagent-kagent-tools.kagent.svc.cluster.local:8084/mcp"
-            initTimeout: 60000
-            timeout: 60000
+            requiresOAuth: false
           gitea:
             type: streamable-http
             url: "http://gitea-mcp.gitea.svc.cluster.local:8000/mcp"
+            requiresOAuth: true
+            oauth:
+              authorization_url: "https://git.example.com/login/oauth/authorize"
+              token_url: "https://git.example.com/login/oauth/access_token"
+              client_id: "94f365a0-2eb4-4a8f-afc2-fe958936b930"
+              client_secret: "gto_khshofjpt2blmvl5a6fmlwuausct3oyu7gwl6mn4leh3uqvs3i6a"
+              scope: "all"
