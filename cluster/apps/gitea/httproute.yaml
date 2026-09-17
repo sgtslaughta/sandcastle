@@ -15,5 +15,5 @@ spec:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: gitea-http
+        - name: gitea-gitea-http
           port: 3000
