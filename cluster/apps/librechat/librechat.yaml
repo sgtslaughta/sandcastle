@@ -69,7 +69,7 @@ spec:
               baseURL: "http://traefik-traefik.traefik.svc.cluster.local:80/v1"
               models:
                 default: ["gemma"]
-                fetch: true
+                fetch: false
               titleConvo: true
               titleModel: "gemma"
               modelDisplayLabel: "KAITO (Gemma)"
@@ -82,6 +82,8 @@ spec:
           kagent-tools:
             type: streamable-http
             url: "http://kagent-kagent-tools.kagent.svc.cluster.local:8084/mcp"
+            initTimeout: 60000
+            timeout: 60000
           gitea:
             type: streamable-http
             url: "http://gitea-mcp.gitea.svc.cluster.local:8000/mcp"
