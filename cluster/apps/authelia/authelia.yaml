@@ -129,6 +129,7 @@ spec:
               authorization_policy: one_factor
               redirect_uris:
                 - https://git.example.com/user/oauth2/authelia/callback
+                - http://git.example.com/user/oauth2/authelia/callback
                 - http://gitea-http.gitea.svc.cluster.local:3000/user/oauth2/authelia/callback
                 - http://localhost:3000/user/oauth2/authelia/callback
               scopes:
