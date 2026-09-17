@@ -1,0 +1,13 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gitea-ca-cert
+  namespace: gitea
+spec:
+  secretName: gitea-ca-cert
+  issuerRef:
+    name: sandcastle-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - "git.example.com"

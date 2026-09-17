@@ -71,3 +71,16 @@ spec:
       enabled: false
     strategy:
       type: "Recreate"
+    extraVolumes:
+      - name: custom-ca
+        secret:
+          secretName: gitea-ca-cert
+    extraContainerVolumeMounts:
+      - name: custom-ca
+        mountPath: /etc/ssl/certs/sandcastle-ca.crt
+        subPath: ca.crt
+        readOnly: true
+    deployment:
+      env:
+        - name: SSL_CERT_DIR
+          value: /etc/ssl/certs

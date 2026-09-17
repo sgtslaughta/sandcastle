@@ -91,6 +91,7 @@ spec:
               client_secret: "$argon2id$v=19$m=65536,t=3,p=4$O6p7LauRcBOHArQiFr2FUA$bwsK7fM2/d05UAI1JlnH/bwkLe3CXuvKDPOjrzQZPqY"
               public: false
               authorization_policy: one_factor
+              token_endpoint_auth_method: 'client_secret_post'
               redirect_uris:
                 - https://chat.example.com/oauth/openid/callback
                 - http://localhost:3080/oauth/openid/callback
@@ -137,6 +138,7 @@ spec:
                 - profile
                 - email
                 - groups
+                - offline_access
               grant_types:
                 - authorization_code
                 - refresh_token
