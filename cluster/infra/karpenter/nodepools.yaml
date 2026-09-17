@@ -71,8 +71,8 @@ spec:
           operator: In
           values: ["c", "m", "r", "t"]
         - key: karpenter.k8s.aws/instance-generation
-          operator: Gt
-          values: ["2"]
+          operator: In
+          values: ["3", "4", "5", "6", "7", "8"]
   limits:
     cpu: 100
     memory: 500Gi

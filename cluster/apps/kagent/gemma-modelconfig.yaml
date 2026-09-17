@@ -8,4 +8,3 @@ spec:
   model: gemma
   openAI:
     baseUrl: "http://traefik-gateway.traefik.svc.cluster.local:8000/v1"
-

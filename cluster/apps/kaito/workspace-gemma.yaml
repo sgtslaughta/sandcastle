@@ -7,7 +7,7 @@ resource:
   instanceType: "g5.xlarge"
   labelSelector:
     matchLabels:
-      app.kubernetes.io/name: gemma
+      apps: gemma
 inference:
   preset:
-    name: "gemma-2-2b-it"
+    name: "google/gemma-4-E2B-it"

@@ -1,0 +1,232 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitea-mcp-server
+  namespace: gitea
+data:
+  server.py: |
+    import json
+    import os
+    import sys
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import urllib.request
+    import urllib.error
+
+    GITEA_URL = os.environ.get("GITEA_URL", "http://gitea-http.gitea.svc.cluster.local:3000")
+    DEFAULT_AUTH = os.environ.get("DEFAULT_AUTH_TOKEN", "")
+
+    TOOLS = [
+        {
+            "name": "gitea_get_current_user",
+            "description": "Get profile of the currently authenticated Gitea user on whose behalf the agent is acting.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "gitea_list_user_repositories",
+            "description": "List all repositories accessible to the authenticated user (including private repos).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "gitea_list_issues",
+            "description": "List issues for a specific repository on Gitea.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string", "description": "Repository owner username"},
+                    "repo": {"type": "string", "description": "Repository name"}
+                },
+                "required": ["owner", "repo"]
+            }
+        },
+        {
+            "name": "gitea_get_file_content",
+            "description": "Read file content from a repository on Gitea.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string", "description": "Repository owner username"},
+                    "repo": {"type": "string", "description": "Repository name"},
+                    "filepath": {"type": "string", "description": "Path to file within repo"}
+                },
+                "required": ["owner", "repo", "filepath"]
+            }
+        }
+    ]
+
+    def call_gitea(endpoint, method="GET", data=None, auth_header=None):
+        url = f"{GITEA_URL}/api/v1{endpoint}"
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        }
+        token = auth_header or (f"Bearer {DEFAULT_AUTH}" if DEFAULT_AUTH else None)
+        if token:
+            headers["Authorization"] = token
+
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req) as response:
+                return response.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8")
+            return json.dumps({"error": f"HTTP {e.code}: {err_body}"})
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    class MCPHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            auth_header = self.headers.get("Authorization")
+
+            try:
+                msg = json.loads(body)
+            except Exception as e:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b'{"error":"invalid json"}')
+                return
+
+            req_id = msg.get("id")
+            method = msg.get("method")
+            params = msg.get("params", {})
+
+            if method == "initialize":
+                resp = {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {"tools": {}},
+                        "serverInfo": {"name": "gitea-mcp", "version": "1.0.0"}
+                    }
+                }
+            elif method == "notifications/initialized":
+                self.send_response(200)
+                self.end_headers()
+                return
+            elif method == "tools/list":
+                resp = {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {"tools": TOOLS}
+                }
+            elif method == "tools/call":
+                tool_name = params.get("name")
+                args = params.get("arguments", {})
+
+                if tool_name == "gitea_get_current_user":
+                    res = call_gitea("/user", auth_header=auth_header)
+                elif tool_name == "gitea_list_user_repositories":
+                    res = call_gitea("/user/repos", auth_header=auth_header)
+                elif tool_name == "gitea_list_issues":
+                    owner = args.get("owner")
+                    repo = args.get("repo")
+                    res = call_gitea(f"/repos/{owner}/{repo}/issues", auth_header=auth_header)
+                elif tool_name == "gitea_get_file_content":
+                    owner = args.get("owner")
+                    repo = args.get("repo")
+                    fp = args.get("filepath")
+                    res = call_gitea(f"/repos/{owner}/{repo}/raw/{fp}", auth_header=auth_header)
+                else:
+                    res = json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+                resp = {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": res}]
+                    }
+                }
+            else:
+                resp = {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32601, "message": f"Method not found: {method}"}
+                }
+
+            out = json.dumps(resp).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+        def do_GET(self):
+            # Healthcheck
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"gitea-mcp operational\n")
+
+    if __name__ == "__main__":
+        port = int(os.environ.get("PORT", "8000"))
+        server = HTTPServer(("0.0.0.0", port), MCPHandler)
+        print(f"Gitea MCP server listening on port {port}")
+        server.serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitea-mcp
+  namespace: gitea
+  labels:
+    app.kubernetes.io/name: gitea-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gitea-mcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gitea-mcp
+    spec:
+      containers:
+        - name: mcp
+          image: python:3.11-alpine
+          command:
+            - python3
+            - /app/server.py
+          env:
+            - name: PORT
+              value: "8000"
+            - name: GITEA_URL
+              value: "http://gitea-http.gitea.svc.cluster.local:3000"
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: script
+              mountPath: /app
+      volumes:
+        - name: script
+          configMap:
+            name: gitea-mcp-server
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitea-mcp
+  namespace: gitea
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  selector:
+    app.kubernetes.io/name: gitea-mcp

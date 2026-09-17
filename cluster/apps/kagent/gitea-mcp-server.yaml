@@ -1,0 +1,9 @@
+apiVersion: kagent.dev/v1alpha2
+kind: RemoteMCPServer
+metadata:
+  name: gitea-mcp
+  namespace: kagent
+spec:
+  description: "Gitea MCP server for interacting with repositories, issues, and code on behalf of the authenticated user"
+  protocol: STREAMABLE_HTTP
+  url: "http://gitea-mcp.gitea.svc.cluster.local:8000/mcp"

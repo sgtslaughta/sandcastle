@@ -122,3 +122,22 @@ spec:
                 - refresh_token
               response_types:
                 - code
+            - client_id: gitea
+              client_name: Gitea
+              client_secret: "$argon2id$v=19$m=65536,t=3,p=4$inuqESJ9hjrL78bxXQYFhw$TzjDigchBi/wi2kZV3pkV1vn3LNVc8op7fvvgCuJocA"
+              public: false
+              authorization_policy: one_factor
+              redirect_uris:
+                - https://git.example.com/user/oauth2/authelia/callback
+                - http://gitea-http.gitea.svc.cluster.local:3000/user/oauth2/authelia/callback
+                - http://localhost:3000/user/oauth2/authelia/callback
+              scopes:
+                - openid
+                - profile
+                - email
+                - groups
+              grant_types:
+                - authorization_code
+                - refresh_token
+              response_types:
+                - code

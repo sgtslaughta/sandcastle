@@ -6,5 +6,6 @@ resources:
   - kagent.yaml
   - gemma-modelconfig.yaml
   - gemma-agent.yaml
+  - gitea-mcp-server.yaml
 
 

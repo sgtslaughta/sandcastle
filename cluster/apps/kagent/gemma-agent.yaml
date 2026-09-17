@@ -26,3 +26,8 @@ spec:
           kind: RemoteMCPServer
           apiGroup: kagent.dev
           name: kagent-kagent-tool-server
+      - type: McpServer
+        mcpServer:
+          kind: RemoteMCPServer
+          apiGroup: kagent.dev
+          name: gitea-mcp
