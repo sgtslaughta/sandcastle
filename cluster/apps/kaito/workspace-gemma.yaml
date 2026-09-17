@@ -1,0 +1,13 @@
+apiVersion: kaito.sh/v1beta1
+kind: Workspace
+metadata:
+  name: gemma
+  namespace: kaito-workspace
+resource:
+  instanceType: "g5.xlarge"
+  labelSelector:
+    matchLabels:
+      apps: gemma
+inference:
+  preset:
+    name: "google/gemma-4-E2B-it"

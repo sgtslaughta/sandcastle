@@ -1,0 +1,146 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: authelia
+  namespace: flux-system
+spec:
+  interval: 5m0s
+  timeout: 10m0s
+  targetNamespace: authelia
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  chart:
+    spec:
+      chart: authelia
+      version: "0.11.x"
+      sourceRef:
+        kind: HelmRepository
+        name: authelia
+        namespace: flux-system
+      interval: 5m0s
+  values:
+    pod:
+      kind: Deployment
+      replicas: 1
+      extraVolumes:
+        - name: authelia-users
+          secret:
+            secretName: authelia-users
+        - name: authelia-oidc-key
+          secret:
+            secretName: authelia-oidc-key
+      extraVolumeMounts:
+        - name: authelia-users
+          mountPath: /config-users
+          readOnly: true
+        - name: authelia-oidc-key
+          mountPath: /secrets/oidc
+          readOnly: true
+    persistence:
+      enabled: true
+      existingClaim: authelia-data
+
+    secret:
+      existingSecret: authelia-secrets
+
+    configMap:
+      log:
+        level: debug
+      theme: dark
+      default_2fa_method: totp
+      totp:
+        issuer: sandcastle.local
+      session:
+        cookies:
+          - domain: example.com
+            subdomain: auth
+            default_redirection_url: https://chat.example.com
+      storage:
+        local:
+          enabled: true
+          path: /config/db.sqlite3
+      notifier:
+        filesystem:
+          enabled: true
+          filename: /config/notification.txt
+      authentication_backend:
+        file:
+          enabled: true
+          path: /config-users/users_database.yml
+      access_control:
+        default_policy: one_factor
+      identity_providers:
+        oidc:
+          enabled: true
+          jwks:
+            - key_id: sandcastle-default
+              algorithm: RS256
+              use: sig
+              key:
+                path: /secrets/oidc/oidc.rsa.key
+          cors:
+            allowed_origins_from_client_redirect_uris: true
+          clients:
+            - client_id: librechat
+              client_name: LibreChat
+              client_secret: "$argon2id$v=19$m=65536,t=3,p=4$O6p7LauRcBOHArQiFr2FUA$bwsK7fM2/d05UAI1JlnH/bwkLe3CXuvKDPOjrzQZPqY"
+              public: false
+              authorization_policy: one_factor
+              token_endpoint_auth_method: 'client_secret_post'
+              redirect_uris:
+                - https://chat.example.com/oauth/openid/callback
+                - http://localhost:3080/oauth/openid/callback
+              scopes:
+                - openid
+                - profile
+                - email
+                - offline_access
+              grant_types:
+                - authorization_code
+                - refresh_token
+              response_types:
+                - code
+            - client_id: kagent
+              client_name: Kagent
+              client_secret: "$argon2id$v=19$m=65536,t=3,p=4$xldBIs8mfvEa3DNeIZPKTA$B92GZfUBaxw9y3ic9Inx3NQZwNbv48hwhqflfCmw2go"
+              public: false
+              authorization_policy: one_factor
+              redirect_uris:
+                - https://kagent.example.com/oauth2/callback
+                - http://localhost:8080/oauth2/callback
+              scopes:
+                - openid
+                - profile
+                - email
+                - offline_access
+              grant_types:
+                - authorization_code
+                - refresh_token
+              response_types:
+                - code
+            - client_id: gitea
+              client_name: Gitea
+              client_secret: "$argon2id$v=19$m=65536,t=3,p=4$inuqESJ9hjrL78bxXQYFhw$TzjDigchBi/wi2kZV3pkV1vn3LNVc8op7fvvgCuJocA"
+              public: false
+              authorization_policy: one_factor
+              redirect_uris:
+                - https://git.example.com/user/oauth2/authelia/callback
+                - http://git.example.com/user/oauth2/authelia/callback
+                - http://gitea-http.gitea.svc.cluster.local:3000/user/oauth2/authelia/callback
+                - http://localhost:3000/user/oauth2/authelia/callback
+              scopes:
+                - openid
+                - profile
+                - email
+                - groups
+                - offline_access
+              grant_types:
+                - authorization_code
+                - refresh_token
+              response_types:
+                - code

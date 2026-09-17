@@ -1,0 +1,60 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kagent
+  namespace: flux-system
+spec:
+  interval: 5m0s
+  timeout: 10m0s
+  targetNamespace: kagent
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  dependsOn:
+    - name: kagent-crds
+      namespace: flux-system
+  chart:
+    spec:
+      chart: kagent
+      version: "0.x"
+      sourceRef:
+        kind: HelmRepository
+        name: kagent
+        namespace: flux-system
+      interval: 5m0s
+  values:
+    substrate:
+      enabled: true
+    controller:
+      substrate:
+        enabled: true
+        ateApiEndpoint: "dns:///kagent-kagent-api.kagent.svc:443"
+        atenetRouterURL: "http://kagent-kagent-atenet-router.kagent.svc:80"
+        ateApiInsecure: true
+        defaultWorkerPool:
+          name: kagent-default
+    # Disable default demo agents that require kagent-openai secret
+    promql-agent:
+      enabled: false
+    k8s-agent:
+      enabled: false
+    kgateway-agent:
+      enabled: false
+    istio-agent:
+      enabled: false
+    observability-agent:
+      enabled: false
+    argo-rollouts-agent:
+      enabled: false
+    helm-agent:
+      enabled: false
+    cilium-policy-agent:
+      enabled: false
+    cilium-manager-agent:
+      enabled: false
+    cilium-debug-agent:
+      enabled: false

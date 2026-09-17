@@ -1,0 +1,36 @@
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: kagent-default
+  namespace: kagent
+spec:
+  replicas: 1
+  sandboxClass: gvisor
+  ateomImage: ghcr.io/kagent-dev/substrate/ateom-gvisor:v0.0.9
+---
+apiVersion: kagent.dev/v1alpha2
+kind: SandboxAgent
+metadata:
+  name: gemma
+  namespace: kagent
+spec:
+  type: Declarative
+  substrate:
+    workerPoolRef:
+      name: kagent-default
+  declarative:
+    runtime: go
+    modelConfig: gemma
+    systemMessage: |
+      You are a helpful AI assistant running Gemma in Kubernetes with access to Agent Substrate and cluster tools.
+    tools:
+      - type: McpServer
+        mcpServer:
+          kind: RemoteMCPServer
+          apiGroup: kagent.dev
+          name: kagent-kagent-tool-server
+      - type: McpServer
+        mcpServer:
+          kind: RemoteMCPServer
+          apiGroup: kagent.dev
+          name: gitea-mcp

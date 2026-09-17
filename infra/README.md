@@ -1,0 +1,1 @@
+A super simple EKS cluster with some node groups I'm using for the agentic backend as well as the cheaper frontend stuff for "classical" compute tasks.

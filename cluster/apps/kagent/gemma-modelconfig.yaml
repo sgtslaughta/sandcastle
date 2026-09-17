@@ -1,0 +1,12 @@
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: gemma
+  namespace: kagent
+spec:
+  provider: OpenAI
+  model: gemma
+  apiKeySecret: gemma-apikey
+  apiKeySecretKey: api-key
+  openAI:
+    baseUrl: "http://traefik-traefik.traefik.svc.cluster.local:80/v1"
