@@ -5,5 +5,4 @@ resources:
   - kaito-repository.yaml
   - kaito.yaml
   - workspace-gemma.yaml
-  - inferencepool.yaml
   - httproute.yaml
