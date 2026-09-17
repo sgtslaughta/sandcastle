@@ -66,14 +66,14 @@ spec:
         endpoints:
           custom:
             - name: "kaito"
-              apiKey: "kaito"
+              apiKey: "sk-kaito-litellm-master-key"
               baseURL: "http://traefik-traefik.traefik.svc.cluster.local:80/v1"
               models:
                 default: ["gemma"]
-                fetch: false
+                fetch: true
               titleConvo: true
               titleModel: "gemma"
-              modelDisplayLabel: "KAITO (Gemma)"
+              modelDisplayLabel: "KAITO"
         mcpSettings:
           allowedDomains:
             - "*.cluster.local"

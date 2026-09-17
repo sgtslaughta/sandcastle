@@ -9,4 +9,4 @@ spec:
   apiKeySecret: gemma-apikey
   apiKeySecretKey: api-key
   openAI:
-    baseUrl: "http://traefik-gateway.traefik.svc.cluster.local:8000/v1"
+    baseUrl: "http://traefik-traefik.traefik.svc.cluster.local:80/v1"

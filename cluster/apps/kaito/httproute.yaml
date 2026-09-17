@@ -8,36 +8,10 @@ spec:
     - name: traefik-gateway
       namespace: traefik
   rules:
-    # Model-aware header route (set by BBR, proxy, or API clients)
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /v1
-          headers:
-            - name: X-Gateway-Model-Name
-              value: gemma
-      backendRefs:
-        - name: gemma
-          port: 80
-    # Model-specific path-based route for direct model targeting
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /models/gemma/v1
-      filters:
-        - type: URLRewrite
-          urlRewrite:
-            path:
-              type: ReplacePrefixMatch
-              replacePrefixMatch: /v1
-      backendRefs:
-        - name: gemma
-          port: 80
-    # Default OpenAI /v1 endpoint routing to primary model pool
     - matches:
         - path:
             type: PathPrefix
             value: /v1
       backendRefs:
-        - name: gemma
-          port: 80
+        - name: litellm
+          port: 4000
