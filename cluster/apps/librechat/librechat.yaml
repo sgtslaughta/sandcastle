@@ -56,7 +56,7 @@ spec:
         OPENID_ISSUER: "https://auth.example.com"
         OPENID_SESSION_SECRET: "7f4c0a1843b44b8296a152345e678901"
         OPENID_SCOPE: "openid profile email offline_access"
-        OPENID_CALLBACK_URL: "https://chat.example.com/oauth/openid/callback"
+        OPENID_CALLBACK_URL: "/oauth/openid/callback"
         OPENID_BUTTON_LABEL: "Authelia SSO"
         CHECK_EMAIL_DOMAIN: "false"
       configYamlContent: |
