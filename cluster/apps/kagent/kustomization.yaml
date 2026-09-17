@@ -4,9 +4,7 @@ resources:
   - kagent-repository.yaml
   - kagent-crds.yaml
   - kagent.yaml
-  - kagent-openai-secret.yaml
   - gemma-modelconfig.yaml
   - gemma-agent.yaml
-  - kagent-openai-proxy.yaml
 
 

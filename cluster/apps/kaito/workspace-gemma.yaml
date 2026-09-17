@@ -1,0 +1,14 @@
+apiVersion: kaito.sh/v1beta1
+kind: Workspace
+metadata:
+  name: gemma
+  namespace: kaito-workspace
+spec:
+  resource:
+    instanceType: "g5.xlarge"
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: gemma
+  inference:
+    preset:
+      name: "gemma-2-2b-it"

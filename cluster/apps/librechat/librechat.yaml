@@ -64,15 +64,15 @@ spec:
         cache: true
         endpoints:
           custom:
-            - name: "kagent"
-              apiKey: "kagent"
-              baseURL: "http://kagent-openai-proxy.kagent.svc.cluster.local:8000/v1"
+            - name: "kaito"
+              apiKey: "kaito"
+              baseURL: "http://traefik-gateway.traefik.svc.cluster.local:8000/v1"
               models:
-                default: ["gemma", "nemotron"]
+                default: ["gemma"]
                 fetch: true
               titleConvo: true
               titleModel: "gemma"
-              modelDisplayLabel: "Kagent (Gemma)"
+              modelDisplayLabel: "KAITO (Gemma)"
         mcpServers:
           kagent-tools:
             type: sse

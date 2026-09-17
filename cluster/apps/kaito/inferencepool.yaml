@@ -1,0 +1,10 @@
+apiVersion: inference.networking.k8s.io/v1
+kind: InferencePool
+metadata:
+  name: gemma-pool
+  namespace: kaito-workspace
+spec:
+  selector:
+    matchLabels:
+      kaito.sh/workspace: gemma
+  targetPortNumber: 80

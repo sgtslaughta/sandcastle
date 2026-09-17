@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - storageclass-gp3.yaml
   - gateway-api-crds.yaml
+  - inference-extension-crds.yaml
   - cert-manager
   - traefik
   - karpenter

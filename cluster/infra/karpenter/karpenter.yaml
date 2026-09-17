@@ -37,6 +37,8 @@ spec:
     settings:
       clusterName: ai-agent-cluster
       interruptionQueue: Karpenter-ai-agent-cluster
+      featureGates:
+        staticCapacity: true
     serviceAccount:
       create: true
       name: karpenter
